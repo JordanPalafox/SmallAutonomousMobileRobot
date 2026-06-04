@@ -131,6 +131,18 @@ slam_node:
     # the 10 Hz budget is 100 ms; 80 leaves headroom for the warning to be useful.
     scan_budget_ms:             80.0
 
+    # ── Re-localización por ArUco ────────────────────────────────
+    # Un ArUco visto = certeza absoluta de posición. Cuando llega una pose por
+    # /aruco_pose_estimate (del nodo aruco_localization), si nos habíamos
+    # desviado más que la tolerancia, REPOSICIONA la creencia ahí y el scan la
+    # encaja contra las paredes desde ese punto. Si ya coincidimos, no toca nada
+    # (evita re-sembrar en cada frame de cámara y pelear con el refine del scan).
+    aruco_enabled:              true
+    aruco_snap_tol:             0.15    # m   — desvío mínimo para reposicionar
+    aruco_snap_tol_theta:       0.15    # rad — desvío angular mínimo
+    aruco_seed_sigma_xy:        0.20    # m   — dispersión al re-sembrar (deja que el láser afine)
+    aruco_seed_sigma_theta:     0.10    # rad
+
     # ── Initial pose (world frame) ───────────────────────────────
     initial_x:                  0.0
     initial_y:                  0.0

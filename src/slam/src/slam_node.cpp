@@ -164,6 +164,18 @@ public:
     ap.recovery_sigma_theta = declare_parameter("amcl_recovery_sigma_theta", 0.08);
     ap.use_cuda = declare_parameter("amcl_use_cuda", true);
 
+    // ── ArUco re-localisation ────────────────────────────────────
+    // Un ArUco es un punto de certeza absoluta: cuando llega una pose por
+    // /aruco_pose_estimate, REPOSICIONA la creencia ahí y deja que el scan la
+    // encaje contra las paredes. Solo reposiciona si nos habiamos desviado mas
+    // que las tolerancias (si ya estamos donde dice el marker, no toca nada y
+    // deja trabajar al scan, evitando jitter por re-siembra en cada frame).
+    aruco_en_ = declare_parameter("aruco_enabled", true);
+    aruco_snap_tol_ = declare_parameter("aruco_snap_tol", 0.15);        // m
+    aruco_snap_tol_th_ = declare_parameter("aruco_snap_tol_theta", 0.15); // rad
+    aruco_seed_sxy_ = declare_parameter("aruco_seed_sigma_xy", 0.20);   // m
+    aruco_seed_sth_ = declare_parameter("aruco_seed_sigma_theta", 0.10); // rad
+
     grid_ = std::make_unique<slam::OccupancyGrid>(mapw_, maph_, res_, l_occ, l_free,
                                                   l_min, l_max, dl_occ, dl_free, occ_stop);
     amcl_ = std::make_unique<slam::AMCL>(grid_.get(), ap);
@@ -230,6 +242,8 @@ public:
       "/scan", qos_scan, std::bind(&SlamNode::onScan, this, std::placeholders::_1));
     initpose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
       "/initialpose", 10, std::bind(&SlamNode::onInitPose, this, std::placeholders::_1));
+    aruco_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      "/aruco_pose_estimate", 10, std::bind(&SlamNode::onAruco, this, std::placeholders::_1));
 
     reset_srv_ = create_service<std_srvs::srv::Trigger>(
       "~/reset_map", std::bind(&SlamNode::onReset, this,
@@ -654,6 +668,28 @@ private:
     RCLCPP_INFO(get_logger(), "Pose set to (%.2f, %.2f, %.1f°)", sx_, sy_, sth_*180/M_PI);
   }
 
+  // ArUco: punto de certeza absoluta. Reposiciona la creencia en la pose del
+  // marker y deja que el scan la encaje contra las paredes desde ahi. Solo
+  // actua si nos habiamos desviado mas que las tolerancias (si ya coincidimos,
+  // no re-siembra para no pelear con el refine del scan).
+  void onAruco(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr m) {
+    std::lock_guard<std::mutex> lk(mtx_);
+    if (!aruco_en_ || !odom_ready_) return;
+    double x = m->pose.pose.position.x, y = m->pose.pose.position.y;
+    double th = yawFromQuat(m->pose.pose.orientation);
+
+    if (std::hypot(x - sx_, y - sy_) < aruco_snap_tol_ &&
+        std::abs(wrap(th - sth_)) < aruco_snap_tol_th_)
+      return;  // ya estamos donde dice el ArUco → deja que el scan trabaje
+
+    sx_ = x; sy_ = y; sth_ = th;
+    amcl_->initGaussian(sx_, sy_, sth_, aruco_seed_sxy_, aruco_seed_sth_);
+    Pose2 t = compose({sx_, sy_, sth_}, inverse({ox_, oy_, oth_}));
+    tf_x_ = t.x; tf_y_ = t.y; tf_th_ = t.th;
+    RCLCPP_INFO(get_logger(), "Reposicionado por ArUco en (%.2f, %.2f, %.1f°)",
+                x, y, th * 180.0 / M_PI);
+  }
+
   void onReset(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
                std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
     std::lock_guard<std::mutex> lk(mtx_);
@@ -812,6 +848,10 @@ private:
   bool backend_wanted_=false, backend_stop_=false;
   double init_x_, init_y_, init_th_, init_sxy_, init_sth_, tf_alpha_;
   bool publish_debug_=true; double scan_budget_ms_=80.0;
+  // ArUco re-localisation
+  bool aruco_en_=true;
+  double aruco_snap_tol_=0.15, aruco_snap_tol_th_=0.15;
+  double aruco_seed_sxy_=0.20, aruco_seed_sth_=0.10;
 
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
@@ -821,6 +861,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initpose_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr aruco_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_srv_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_br_;
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

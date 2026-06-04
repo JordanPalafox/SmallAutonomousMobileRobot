@@ -1,0 +1,35 @@
+# Parametros de la capa de localizacion por ArUco.
+# Se cargan vias launch. Los paths se resuelven en el launch al share dir.
+aruco_localization:
+  ros__parameters:
+    image_topic: /cam_img
+    qos: sensor_data
+    marker_length: 0.09          # 9 cm de lado (DICT_ARUCO_ORIGINAL 5x5)
+    dictionary: original          # DICT_ARUCO_ORIGINAL
+    map_frame: map
+
+    # --- Extrinsecos de camara (frame OPTICO en base_link) ---
+    # AJUSTAR al montaje fisico real del robot.
+    cam_xyz: [0.10, 0.0, 0.07]    # origen optico en base_link [m]
+    cam_pitch_deg: 30.0           # inclinacion hacia ABAJO [grados]
+    cam_yaw_deg: 0.0
+
+    # --- Filtrado / fusion ---
+    max_range: 1.5                # descarta markers a mas de 1.5 m
+    min_markers: 1
+    xy_std_base: 0.03             # ruido posicion a 1 m [m]
+    yaw_std_base_deg: 3.0         # ruido orientacion a 1 m [grados]
+
+    # --- Salida extra ---
+    publish_poses: true           # tambien publica /aruco_poses + /aruco_ids
+    camera_frame: camera_link
+    publish_debug_image: true
+
+aruco_pose_node:
+  ros__parameters:
+    image_topic: /cam_img
+    qos: sensor_data
+    marker_length: 0.09
+    dictionary: original
+    frame_id: camera_link
+    publish_debug_image: true
