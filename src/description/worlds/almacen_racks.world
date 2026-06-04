@@ -1,0 +1,780 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="almacen_racks">
+    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
+    <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows><pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse><specular>0.2 0.2 0.2 1</specular>
+      <attenuation><range>1000</range><constant>0.9</constant>
+        <linear>0.01</linear><quadratic>0.001</quadratic></attenuation>
+      <direction>-0.5 0.1 -0.9</direction></light>
+    <model name="ground_plane"><static>true</static><link name="link">
+      <collision name="col"><geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry></collision>
+      <visual name="vis"><geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+        <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+    </link></model>
+    <model name="pared_oeste"><static>true</static>
+      <pose>2.4400 3.6750 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="pared_este"><static>true</static>
+      <pose>2.4400 0.0150 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="pared_norte"><static>true</static>
+      <pose>4.8650 1.8450 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 3.6300 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 3.6300 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="pared_sur_a"><static>true</static>
+      <pose>0.0150 0.1750 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.3500 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.3500 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="dintel_1"><static>true</static>
+      <pose>0.0150 0.5350 0.3350 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.3700 0.1500</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.3700 0.1500</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_1_izq"><static>true</static>
+      <pose>-0.3100 0.3350 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_1_der"><static>true</static>
+      <pose>-0.3100 0.7350 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_1_frente"><static>true</static>
+      <pose>-0.6050 0.5350 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.4300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.4300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="pared_sur_b"><static>true</static>
+      <pose>0.0150 0.7950 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="dintel_2"><static>true</static>
+      <pose>0.0150 1.0550 0.3350 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.3700 0.1500</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.3700 0.1500</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_2_izq"><static>true</static>
+      <pose>-0.3100 0.8550 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_2_der"><static>true</static>
+      <pose>-0.3100 1.2550 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_2_frente"><static>true</static>
+      <pose>-0.6050 1.0550 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.4300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.4300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="pared_sur_c"><static>true</static>
+      <pose>0.0150 1.3150 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="dintel_3"><static>true</static>
+      <pose>0.0150 1.5750 0.3350 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.3700 0.1500</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.3700 0.1500</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_3_izq"><static>true</static>
+      <pose>-0.3100 1.3750 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_3_der"><static>true</static>
+      <pose>-0.3100 1.7750 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6200 0.0300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="dock_3_frente"><static>true</static>
+      <pose>-0.6050 1.5750 0.1300 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.4300 0.2600</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.4300 0.2600</size></box></geometry>
+          <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
+      </link></model>
+    <model name="pared_sur_d"><static>true</static>
+      <pose>0.0150 2.0250 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.5300 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.5300 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="dintel_4"><static>true</static>
+      <pose>0.0150 2.6900 0.3350 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.8000 0.1500</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.8000 0.1500</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="pared_sur_e"><static>true</static>
+      <pose>0.0150 3.3900 0.2050 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.0300 0.6000 0.4100</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.0300 0.6000 0.4100</size></box></geometry>
+          <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
+      </link></model>
+    <model name="rack_A_1"><static>true</static>
+      <pose>2.2450 3.5850 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_A_2"><static>true</static>
+      <pose>2.6550 3.5850 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_A_3"><static>true</static>
+      <pose>3.0650 3.5850 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_B_4"><static>true</static>
+      <pose>1.4750 1.4250 0 0 0 1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_B_5"><static>true</static>
+      <pose>1.4750 1.7750 0 0 0 1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_B_6"><static>true</static>
+      <pose>1.4750 2.1250 0 0 0 1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_B_7"><static>true</static>
+      <pose>1.6250 1.4250 0 0 0 4.71239</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_B_8"><static>true</static>
+      <pose>1.6250 1.7750 0 0 0 4.71239</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_B_9"><static>true</static>
+      <pose>1.6250 2.1250 0 0 0 4.71239</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C1_10"><static>true</static>
+      <pose>2.9050 2.4050 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C1_11"><static>true</static>
+      <pose>3.2550 2.4050 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C1_12"><static>true</static>
+      <pose>3.6050 2.4050 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C1_13"><static>true</static>
+      <pose>2.9050 2.5550 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C1_14"><static>true</static>
+      <pose>3.2550 2.5550 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C1_15"><static>true</static>
+      <pose>3.6050 2.5550 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C2_16"><static>true</static>
+      <pose>2.9050 1.1750 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C2_17"><static>true</static>
+      <pose>3.2550 1.1750 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C2_18"><static>true</static>
+      <pose>3.6050 1.1750 0 0 0 3.14159</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C2_19"><static>true</static>
+      <pose>2.9050 1.3250 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C2_20"><static>true</static>
+      <pose>3.2550 1.3250 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_C2_21"><static>true</static>
+      <pose>3.6050 1.3250 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_D_22"><static>true</static>
+      <pose>2.2450 0.1050 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="rack_D_23"><static>true</static>
+      <pose>2.6550 0.1050 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>-0.1750 -0.0750 0 0 0 0</pose>
+          <geometry><mesh><uri>model://description/meshes/other/rack.dae</uri>
+            <scale>1.000000 1.363636 0.754717</scale></mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.1000 0 0 0</pose>
+          <geometry><box><size>0.3500 0.1500 0.2000</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R1_1"><static>true</static>
+      <pose>4.7900 0.5500 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R1_2"><static>true</static>
+      <pose>4.6700 0.5500 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R1_3"><static>true</static>
+      <pose>4.5500 0.5500 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R1_4"><static>true</static>
+      <pose>4.4300 0.5500 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R2_5"><static>true</static>
+      <pose>4.7900 0.9400 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R2_6"><static>true</static>
+      <pose>4.6700 0.9400 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R2_7"><static>true</static>
+      <pose>4.5500 0.9400 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R2_8"><static>true</static>
+      <pose>4.4300 0.9400 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R3_9"><static>true</static>
+      <pose>4.7900 1.3300 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R3_10"><static>true</static>
+      <pose>4.6700 1.3300 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R3_11"><static>true</static>
+      <pose>4.5500 1.3300 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R3_12"><static>true</static>
+      <pose>4.4300 1.3300 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R4_13"><static>true</static>
+      <pose>4.7900 1.7200 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R4_14"><static>true</static>
+      <pose>4.6700 1.7200 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R4_15"><static>true</static>
+      <pose>4.5500 1.7200 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R4_16"><static>true</static>
+      <pose>4.4300 1.7200 0 0 0 -1.57080</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R5_17"><static>true</static>
+      <pose>4.6300 3.0900 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R5_18"><static>true</static>
+      <pose>4.6300 2.9700 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R5_19"><static>true</static>
+      <pose>4.6300 2.8500 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R5_20"><static>true</static>
+      <pose>4.6300 2.7300 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+    <model name="roller_R5_21"><static>true</static>
+      <pose>4.6300 2.6100 0 0 0 0.00000</pose>
+      <link name="link">
+        <visual name="vis">
+          <pose>0 0.0549 0 0 0 0</pose>
+          <geometry><mesh>
+            <uri>model://description/meshes/rollers/rollers.dae</uri>
+            <scale>0.941176 1.041667 0.747126</scale>
+          </mesh></geometry>
+        </visual>
+        <collision name="col">
+          <pose>0 0 0.0325 0 0 0</pose>
+          <geometry><box><size>0.1200 0.1600 0.0650</size></box></geometry>
+        </collision>
+      </link></model>
+  </world>
+</sdf>

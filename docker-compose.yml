@@ -1,0 +1,28 @@
+services:
+  velocity_publisher:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    network_mode: host
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=0
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/ros_nodes/fastdds_localhost.xml
+    volumes:
+      - ./ros_nodes:/ros_nodes
+    command: python3 /ros_nodes/publisher.py
+
+  velocity_subscriber:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    network_mode: host
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=0
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/ros_nodes/fastdds_localhost.xml
+    volumes:
+      - ./ros_nodes:/ros_nodes
+    command: python3 /ros_nodes/subscriber.py
+    depends_on:
+      - velocity_publisher

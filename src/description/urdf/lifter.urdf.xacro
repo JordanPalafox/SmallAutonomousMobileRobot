@@ -1,0 +1,186 @@
+<?xml version="1.0"?>
+<robot name="lifter" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!--
+    Lifter mechanism — three STL parts:
+      4-mast-1.stl  → lifter_base_link  (outer mast / fork base, fixed to world)
+      7-mast-2.stl  → mast_inner_link   (inner mast, prismatic ↑ on outer mast)
+      8-carriage.stl→ carriage_link     (carriage,   prismatic ↑ on inner mast)
+
+    STL files are exported by Simplify3D in millimetres; scale 0.001 converts to metres.
+
+    Tune the <origin> tags inside each joint to align parts visually, then use
+    the joint_state_publisher_gui sliders to verify the prismatic motion.
+  -->
+
+  <!-- mm → m -->
+  <xacro:property name="s" value="0.001"/>
+
+  <!-- ═══════════════════════ LINKS ═══════════════════════ -->
+
+  <link name="world"/>
+
+  <!-- Outer mast / fork base (4-mast-1.stl) ─ fixed reference
+       rpy="1.5708 3.14159 0" = Rx(90°) then Ry(180°): stands upright and
+       flipped 180° on Y. xyz re-centred for the flipped orientation. -->
+  <link name="lifter_base_link">
+    <visual>
+      <origin xyz="-0.1125 -0.0112 0.1125" rpy="1.5708 3.14159 3.14159"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/outer_mast.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="off_white">
+        <color rgba="0.93 0.93 0.87 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.01" ixy="0" ixz="0"
+               iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+
+  <!-- Inner mast (Frantic Albar-Hillar (9).stl) ─ slides vertically inside outer mast
+       Long axis (171mm) in mesh-Y → world-Z via rpy="1.5708 0 0".
+       xyz centres the mesh on the link origin (bounding box: X:41-90, Y:-65.5..105.5, Z:0-11.6). -->
+  <link name="mast_inner_link">
+    <visual>
+      <origin xyz="-0.0655 0.0058 -0.0050" rpy="1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/mast_inner.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="off_white">
+        <color rgba="0.93 0.93 0.87 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.3"/>
+      <inertia ixx="0.005" ixy="0" ixz="0"
+               iyy="0.005" iyz="0" izz="0.005"/>
+    </inertial>
+  </link>
+
+  <!-- Carriage (8-carriage.stl) ─ rides the inner mast, carries the load.
+       rpy="0 0 0": raw STL orientation (printed flat).
+       visual_xyz centres the bounding box on the link origin.
+       Result: 80mm wide × 56mm tall × 97mm deep, Y-max face is the back plate. -->
+  <link name="carriage_link">
+    <visual>
+      <origin xyz="-0.1125 -0.11343 -0.02793" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/carriage.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="light_grey">
+        <color rgba="0.80 0.80 0.75 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.2"/>
+      <inertia ixx="0.001" ixy="0" ixz="0"
+               iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- Camera pan holder (camera_holder.stl) — upright bracket, rotates on mast
+       Bottom of bracket (mesh-Y=59mm) sits at z=0 (= inner mast top / joint origin).
+       Top at z=0.0225m. Camera mounts above. -->
+  <link name="cam_holder_link">
+    <visual>
+      <origin xyz="0.0285 -0.0055 0.0715" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/camera_holder.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="light_grey">
+        <color rgba="0.80 0.80 0.75 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!-- Mast camera (camera.stl) — fixed to pan holder, rotates with it -->
+  <link name="mast_camera_link">
+    <visual>
+      <origin xyz="-0.0005 0.0290 0.0005" rpy="-1.5708 0 3.14159"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/camera.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!-- ═══════════════════════ JOINTS ═══════════════════════ -->
+
+  <!-- world → lifter_base (fixed)
+       Z=0.085 raises the outer mast so its bottom sits at z=0 (ground).
+       Outer mast is 170mm tall, half-height = 85mm. -->
+  <joint name="world_to_lifter_base" type="fixed">
+    <parent link="world"/>
+    <child  link="lifter_base_link"/>
+    <origin xyz="0 0 0.085" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Prismatic joint 1: outer mast → inner mast
+       origin at (0,0,0) keeps inner mast centred inside the outer mast.
+       Inner mast (155mm) is fully nested when joint=0; rises in +Z. -->
+  <joint name="mast_inner_joint" type="prismatic">
+    <parent link="lifter_base_link"/>
+    <child  link="mast_inner_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.10" effort="100.0" velocity="0.10"/>
+  </joint>
+
+  <!-- Prismatic joint 2: inner mast → carriage
+       Y=-0.0595  : carriage Y-max face (back plate, +48.28mm from link) flush
+                    with outer mast -Y face (−11.2mm) → −11.2 − 48.28 = −59.48mm
+       Z=-0.0498  : carriage bottom (link Z−27.93mm) aligns with inner mast bottom
+                    (world Z=7.25mm) → 35.18 − 85 = −49.82mm -->
+  <joint name="carriage_joint" type="prismatic">
+    <parent link="mast_inner_link"/>
+    <child  link="carriage_link"/>
+    <origin xyz="0 -0.0420 -0.0498" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.10" effort="50.0" velocity="0.10"/>
+  </joint>
+
+  <!-- Pan holder: revolute X at top of inner mast (z=0.085 ≈ mast top at 85.5mm) -->
+  <joint name="cam_holder_joint" type="fixed">
+    <parent link="mast_inner_link"/>
+    <child  link="cam_holder_link"/>
+    <origin xyz="0 0 0.105" rpy="0.7854 0 0"/>
+  </joint>
+
+  <!-- Camera: fixed to pan holder, sits on top of bracket
+       z=0.030: bracket top (0.0225) + half camera height (0.007) = 0.0295 ≈ 0.030m -->
+  <joint name="mast_camera_joint" type="fixed">
+    <parent link="cam_holder_link"/>
+    <child  link="mast_camera_link"/>
+    <origin xyz="0 0 0.033" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ═══════════════════════ MATERIALS ═══════════════════════ -->
+  <material name="off_white">
+    <color rgba="0.93 0.93 0.87 1.0"/>
+  </material>
+  <material name="light_grey">
+    <color rgba="0.80 0.80 0.75 1.0"/>
+  </material>
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+
+</robot>

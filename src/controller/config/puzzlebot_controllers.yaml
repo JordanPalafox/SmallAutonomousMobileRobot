@@ -1,0 +1,59 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    lifter_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    puzzlebot_controller:
+      type: diff_drive_controller/DiffDriveController
+
+    simple_velocity_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
+gz_ros2_control:
+  ros__parameters:
+    position_proportional_gain: 50.0
+
+puzzlebot_controller:
+  ros__parameters:
+    publish_rate: 50.0
+    base_frame_id: base_footprint
+    left_wheel_names: ['wheel_left_joint']
+    right_wheel_names: ['wheel_right_joint']
+    wheel_separation: 0.19
+    wheel_radius: 0.05
+    use_stamped_vel: false
+    linear.x.has_velocity_limits: true
+    linear.x.has_acceleration_limits: true
+    linear.x.max_velocity: 0.5
+    linear.x.min_velocity: -0.5
+    linear.x.max_acceleration: 1.0
+    angular.z.has_velocity_limits: true
+    angular.z.has_acceleration_limits: true
+    angular.z.max_velocity: 5.0
+    angular.z.max_acceleration: 3.0
+
+simple_velocity_controller:
+  ros__parameters:
+    joints:
+      - wheel_left_joint
+      - wheel_right_joint
+
+lifter_controller:
+  ros__parameters:
+    joints:
+      - mast_inner_joint
+      - carriage_joint
+    command_interfaces:
+      - effort
+    state_interfaces:
+      - position
+      - velocity
+    gains:
+      mast_inner_joint: {p: 150.0, i: 1.0, d: 80.0}
+      carriage_joint:   {p: 150.0, i: 1.0, d: 80.0}

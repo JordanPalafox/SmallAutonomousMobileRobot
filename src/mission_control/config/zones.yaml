@@ -1,0 +1,20 @@
+# Semantic metadata for mission_control.
+#
+# Zone classification (which waypoints are rollers / racks / trucks) is now
+# DERIVED automatically from waypoint name prefixes (roller_*, rack_*, truck_*)
+# read from ~/ros2_maps/waypoints.yaml — the dashboard auto-names waypoints by
+# type, so there is no manual list to keep in sync here. See
+# mission_parser.derive_zones() and state_machine_node.
+#
+# This file only declares the mapping from a decoded QR payload to the truck
+# waypoint the pallet should be delivered to.
+
+# Decoded QR payload → truck waypoint name. The decoded string is upper-cased
+# and stripped before lookup, so list the keys in upper case here.
+qr_aliases:
+  T1:        truck_1
+  T2:        truck_2
+  T3:        truck_3
+  MERCADONA: truck_1
+  DHL:       truck_2
+  COCACOLA:  truck_3

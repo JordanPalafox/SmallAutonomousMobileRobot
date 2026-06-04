@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AMR Warehouse Robot Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-brand">
+      <span class="header-icon">&#9651;</span>
+      <div>
+        <h1 class="header-title">AMR Warehouse Robot</h1>
+        <p class="header-sub">Autonomous Mobile Robot — Puzzlebot AMR</p>
+      </div>
+    </div>
+    <div class="header-status">
+      <button class="map-btn save-map-btn" id="btnSaveMap" title="Save current SLAM map to disk">
+        &#128190; Save Map
+      </button>
+      <span class="conn-dot" id="connDot"></span>
+      <span class="conn-label" id="connLabel">Connecting…</span>
+    </div>
+  </header>
+
+  <main class="grid">
+
+    <!-- ================================================================
+         MAP PANEL — fills all remaining space
+         ================================================================ -->
+    <section class="panel-map">
+      <div class="map-container" id="mapContainer">
+
+        <!-- Single canvas: map bg + all overlays -->
+        <canvas id="mapCanvas" class="map-canvas"></canvas>
+
+        <!-- Toolbar overlay (top-left) -->
+        <div class="map-toolbar">
+          <button class="map-btn" id="btnEditWaypoints" title="Toggle waypoint placement mode">
+            &#9998; Edit Waypoints
+          </button>
+          <span class="map-edit-hint hidden" id="editHint">
+            Drag to add &nbsp;·&nbsp; Click waypoint to delete &nbsp;·&nbsp; ESC to exit
+          </span>
+          <span class="map-source-badge static hidden" id="mapSourceBadge">STATIC</span>
+        </div>
+
+        <!-- Legend overlay (bottom-left) -->
+        <div class="map-legend">
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#00ff88;box-shadow:0 0 4px #00ff88"></span>Robot
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#ff6600"></span>Path
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:rgba(255,60,60,0.9)"></span>LiDAR
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#ffd166"></span>Truck
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#00c8ff"></span>Rack
+          </div>
+          <div class="legend-item">
+            <span class="legend-dot" style="background:#66ee88"></span>Roller
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================================================================
+         RIGHT PANEL — everything always visible, no tabs
+         ================================================================ -->
+    <aside class="panel-right">
+
+      <!-- ---- ROBOT STATE + telemetry ---- -->
+      <section class="card">
+        <h2 class="card-title">Robot State</h2>
+        <div class="state-badge" id="stateBadge">UNKNOWN</div>
+        <div id="missionBox" class="mission-box" style="margin-top:10px">
+          <p class="dim">No active mission</p>
+        </div>
+        <div class="tele-grid" style="margin-top:10px">
+          <span class="tele-label">Candidate</span>
+          <span class="tele-val mono" id="smCurrentCandidate">—</span>
+          <span class="tele-label">QR</span>
+          <span class="tele-val mono accent" id="smQrValue">—</span>
+          <span class="tele-label">Dest</span>
+          <span class="tele-val mono" id="smResolvedDest">—</span>
+          <span class="tele-label">X</span>
+          <span class="tele-val mono" id="poseX">0.000 m</span>
+          <span class="tele-label">Y</span>
+          <span class="tele-val mono" id="poseY">0.000 m</span>
+          <span class="tele-label">&theta;</span>
+          <span class="tele-val mono" id="poseTheta">0.0000 rad</span>
+          <span class="tele-label">Lin</span>
+          <span class="tele-val mono" id="velLinear">0.000 m/s</span>
+          <span class="tele-label">Ang</span>
+          <span class="tele-val mono" id="velAngular">0.000 rad/s</span>
+        </div>
+      </section>
+
+      <!-- ---- CAMERA (always visible) ---- -->
+      <section class="card">
+        <h2 class="card-title">Cámara</h2>
+        <div class="feed-wrap">
+          <img
+            id="cameraFeed"
+            class="feed-img"
+            src="/video_feed"
+            alt="Live camera feed"
+            onerror="this.src='/video_feed'"
+          />
+        </div>
+      </section>
+
+      <!-- ---- LIFTER (4 levels, click to set) ---- -->
+      <section class="card">
+        <h2 class="card-title">Lifter</h2>
+        <div class="lifter-btn-row" id="lifterButtons"></div>
+        <p class="lifter-text">Nivel actual: <span class="mono accent" id="lifterText">0</span></p>
+      </section>
+
+      <!-- ---- CONTROL (quick missions) ---- -->
+      <section class="card">
+        <h2 class="card-title">Control</h2>
+        <div class="quick-control">
+          <button class="quick-btn" id="btnMissionRollers" type="button">&#128269; Buscar en rollers</button>
+          <button class="quick-btn" id="btnMissionRacks" type="button">&#128269; Buscar en racks</button>
+          <button class="quick-btn" id="btnMissionPick" type="button">&#128230; Pick pallet (aquí)</button>
+          <button class="quick-btn quick-btn-stop" id="btnMissionAbort" type="button">&#9632; Abort</button>
+        </div>
+      </section>
+
+      <!-- ---- VOICE ---- -->
+      <section class="card">
+        <h2 class="card-title">Voz</h2>
+        <div class="voice-btn-row">
+          <button class="btn-voice-record" id="btnVoiceRecord" type="button">
+            &#9679; Hold to Record
+          </button>
+        </div>
+        <div class="voice-status-row">
+          <span class="tele-label">Status</span>
+          <span class="voice-status" id="voiceStatus">Ready</span>
+        </div>
+        <div class="voice-result-box" id="voiceResultBox">
+          <span class="voice-result-label">Last word:</span>
+          <span class="voice-result-word mono accent" id="voiceResultWord">—</span>
+        </div>
+        <p class="teleop-hint" id="voiceModelStatus">Checking models…</p>
+        <div class="voice-vocab" id="voiceVocab">
+          <span class="dim">Loading…</span>
+        </div>
+      </section>
+
+      <!-- ---- NAVIGATE TO WAYPOINT ---- -->
+      <section class="card">
+        <h2 class="card-title">Ir a Waypoint</h2>
+        <div class="nav-form">
+          <select id="waypointSelect" class="form-select">
+            <option value="">— cargando… —</option>
+          </select>
+          <div style="display:flex;gap:6px">
+            <button class="btn-submit" id="btnGoWaypoint" type="button" style="flex:1">&#9654; Go</button>
+            <button class="btn-cancel" id="btnCancelNav" type="button" style="flex:1">&#9632; Cancel</button>
+          </div>
+        </div>
+        <div class="nav-status-box">
+          <span class="tele-label">Status:</span>
+          <span class="nav-status-badge" id="navStatusBadge">UNKNOWN</span>
+        </div>
+      </section>
+
+      <!-- ---- TELEOP ---- -->
+      <section class="card">
+        <h2 class="card-title">Teleop Manual</h2>
+        <div class="teleop-keys">
+          <div class="key-row">
+            <div class="key-spacer"></div>
+            <div class="key" id="keyW">W</div>
+            <div class="key-spacer"></div>
+          </div>
+          <div class="key-row">
+            <div class="key" id="keyA">A</div>
+            <div class="key" id="keyS">S</div>
+            <div class="key" id="keyD">D</div>
+          </div>
+        </div>
+        <div style="margin:10px 0">
+          <div class="vel-row">
+            <span class="tele-label">Linear</span>
+            <div class="vel-bar-wrap bipolar-wrap">
+              <div class="bipolar-center"></div>
+              <div class="vel-bar vel-bar-linear bipolar-wrap-bar" id="tBarLinear" style="width:0%;left:50%"></div>
+            </div>
+            <span class="tele-val mono" id="tVelLinear">0.00</span>
+          </div>
+          <div class="vel-row">
+            <span class="tele-label">Angular</span>
+            <div class="vel-bar-wrap bipolar-wrap">
+              <div class="bipolar-center"></div>
+              <div class="vel-bar vel-bar-angular bipolar-wrap-bar" id="tBarAngular" style="width:0%;left:50%"></div>
+            </div>
+            <span class="tele-val mono" id="tVelAngular">0.00</span>
+          </div>
+        </div>
+        <div class="teleop-speed">
+          <button class="btn-speed" id="btnSpeedDown" type="button" title="Bajar velocidad 10% (tecla -)">&minus;</button>
+          <span class="speed-readout mono">speed <strong id="tSpeedVal">0.10</strong> &nbsp;&middot;&nbsp; turn <strong id="tTurnVal">0.21</strong></span>
+          <button class="btn-speed" id="btnSpeedUp" type="button" title="Subir velocidad 10% (tecla +)">+</button>
+        </div>
+        <button class="btn-estop" id="btnEstop" type="button">&#9632; E-STOP</button>
+        <p class="teleop-hint">WASD / Flechas &nbsp;&middot;&nbsp; +/&minus; velocidad &nbsp;&middot;&nbsp; Espacio = E-Stop</p>
+      </section>
+
+    </aside>
+  </main>
+
+  <!-- ================================================================
+       WAYPOINT PLACEMENT POPUP
+       ================================================================ -->
+  <div id="waypointPopup" class="wp-popup hidden">
+    <div class="wp-popup-box">
+      <h3 class="wp-popup-title">&#9998; Place Waypoint</h3>
+      <p class="wp-popup-coords" id="wpCoords">x: 0.000 m, y: 0.000 m</p>
+      <p class="wp-popup-coords" id="wpHeading">&theta;: 0.000 rad (0.0°)</p>
+
+      <label class="form-label">Type</label>
+      <div class="wp-type-group" id="wpTypeGroup">
+        <button type="button" class="wp-type-btn active" data-type="roller">Roller</button>
+        <button type="button" class="wp-type-btn" data-type="rack">Rack</button>
+        <button type="button" class="wp-type-btn" data-type="truck">Truck</button>
+      </div>
+      <p class="wp-popup-coords" id="wpNamePreview">Name: roller_1</p>
+
+      <div class="wp-popup-actions">
+        <button class="btn-submit" id="btnSaveWaypoint">&#10003; Save</button>
+        <button class="btn-cancel" id="btnCancelWaypoint">&#10007; Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- ================================================================
+       FOOTER
+       ================================================================ -->
+  <footer class="footer">
+    <span>Puzzlebot AMR &mdash; TE3003B FJ2026 &mdash; ITESM</span>
+    <span>
+      <span class="conn-dot" id="footerDot"></span>
+      <span id="footerLabel">Connecting…</span>
+    </span>
+  </footer>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+build/
+log/
+install/
+src/puzzlebot_week2/
+odom_square/
+docs/
+.dockerignore
+FULL_INSTRUCTIONS.md
+.claude/memory/
+*.pyc
+actions-runner/

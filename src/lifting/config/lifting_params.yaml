@@ -1,0 +1,27 @@
+lifting_node:
+  ros__parameters:
+    # HAL backend: mock | jetson | spi
+    hal: spi
+
+    # ── GPIO (jetson) ────────────────────────────────────────────────
+    # 3-bit binary encoding → FPGA on board pin numbers
+    pin_bit0: 11   # LSB
+    pin_bit1: 13
+    pin_bit2: 15   # MSB
+
+    # ── SPI (Tang Nano 20K) ──────────────────────────────────────────
+    # /dev/spidev<bus>.<device>; 1MHz, mode 0 (CPOL=0, CPHA=0)
+    # Jetson Nano: bus 0 = pines 19/21/23/24 (header); bus 1 = pines 37/22/13/18.
+    spi_bus: 0
+    spi_device: 0
+    spi_speed_hz: 1000000
+    spi_mode: 0
+
+    # Named operational levels (informational; consumers may use a subset
+    # depending on the active HAL's max level: jetson=7, spi=3)
+    level_rest: 0         # idle / powered off
+    level_transport: 1    # travelling with loaded pallet
+    level_pick_floor: 3   # pick pallet from floor / roller
+    level_carry: 4        # carrying height (jetson HAL only)
+    level_pick_rack2: 5   # pick pallet from rack level 2 (jetson HAL only)
+    level_max: 7          # maximum height (jetson HAL only)

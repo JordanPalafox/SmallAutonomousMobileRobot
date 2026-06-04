@@ -1,0 +1,141 @@
+nav_node:
+  ros__parameters:
+    # Map and waypoint files
+    map_yaml: ~/ros2_maps/warehouse.yaml
+    waypoints_yaml: ~/ros2_maps/waypoints.yaml
+
+    # Obstacle inflation radius for A* grid (m).  With the runtime safety
+    # bubble OFF (enable_safety_bubble: false), this IS the safety margin
+    # — the path is the contract.  Set high enough that paths stay away
+    # from walls.  If specific goals become unreachable (very narrow
+    # passages), the fallback ladder steps down to inflation_radius_min
+    # before giving up.
+    inflation_radius: 0.30
+    # Hard floor for the A* fallback inflation ladder.  Bumped 0.10 → 0.15
+    # to give the robot meaningful clearance even on tight goals.  Robot
+    # is ≈ 0.20 m wide; 15 cm of margin = 5 cm of physical clearance after
+    # accounting for the robot's own radius.  The fallback ladder REFUSES
+    # to drop below this and returns "no path" instead.
+    inflation_radius_min: 0.15
+
+    # Forward speed (m/s) — also the cap for every linear command the nav
+    # node emits (pure-pursuit, wall-follow and reverse are all fractions of
+    # this).  Kept at 0.10 so the robot creeps slowly enough for SLAM/scan
+    # matching to keep correcting the pose.
+    linear_speed: 0.10
+
+    # Pure-pursuit angular PD.  angular_max is the cap for EVERY angular
+    # command the nav node emits (pure-pursuit, in-place heading align,
+    # wall-follow).  Lowered 1.2 → 0.21 rad/s: fast spins were rotating the
+    # LiDAR faster than scan matching could correct, so the pose drifted
+    # mid-turn.  0.21 keeps turns slow enough to stay localised — DO NOT
+    # raise it without re-tuning SLAM (localization constraint).
+    #
+    # angular_kp lowered 2.0 → 1.5: with omega clamped to angular_max, kp=2.0
+    # saturated the controller at only ~6° of heading error, making it
+    # behave like bang-bang and excite a limit cycle (the robot weaved
+    # instead of tracking the path).  kp=1.5 moves saturation onset to ~8°,
+    # so moderate errors modulate omega proportionally.
+    #
+    # angular_kd (NEW): derivative/damping gain on the FILTERED heading-error
+    # rate.  The old pure-P loop had zero damping (ζ=0) against the ~0.84 s
+    # phase lag of the twist_relay acceleration ramp — that lag + bang-bang
+    # is what produced the oscillation.  kd=0.5 gives a lightly-but-stably
+    # damped response (ζ≈0.55).  If the powerbank ever browns out / reboots
+    # during turns, drop kd to 0.4 BEFORE touching the smoother accel.  If
+    # weaving persists AND the pose is clean, raise toward 0.6.
+    #
+    # angular_kd_tau (NEW): low-pass time constant for the derivative
+    # (α = dt/(τ+dt) ≈ 0.33 at 10 Hz, cutoff ~0.8 Hz).  Set at 0.20 (not
+    # 0.15) because /slam_pose jitter is worst mid-turn, exactly when the D
+    # term is active.  Blocks EKF/quantization/segment-snap noise while
+    # still passing the ~0.3–1.0 Hz oscillation band we need to damp.
+    angular_kp: 1.5
+    angular_kd: 0.5
+    angular_kd_tau: 0.20
+    angular_max: 0.21
+
+    # Distance (m) to declare the final goal reached.
+    # Tightened from 0.20 → 0.08 so waypoints are docked precisely.
+    # The pure-pursuit controller already scales speed by min(1, dist/0.5)
+    # so it creeps in slowly under 0.5 m, and reverse-maneuver is enabled
+    # (allow_reverse=true) to correct overshoot, so 8 cm is achievable.
+    goal_tolerance: 0.08
+
+    # Lookahead distance for pure-pursuit (m).  Raised 0.40 → 0.50: the
+    # robot's minimum turning radius under the angular cap is v/ωmax =
+    # 0.10/0.21 ≈ 0.48 m, so a 0.40 m lookahead asked pure-pursuit to aim
+    # at points the robot physically cannot reach without saturating,
+    # forcing full-omega corrections and weaving.  0.50 m sits just above
+    # the turning radius so the geometry is reachable.  Kept conservative
+    # (NOT 0.55–0.60): with inflation_radius only 0.30 m and a ~0.20 m
+    # robot, a longer lookahead aims across the inside of 90° corners and
+    # clips the inflation boundary.  Validate on a physical L-corner before
+    # going higher.
+    lookahead_distance: 0.50
+
+    # Control loop rate (Hz)
+    control_rate: 10.0
+
+    # Heading alignment at goal.  Tightened 0.12 → 0.08 rad (~4.6°) so
+    # the dock pose matches the saved waypoint heading more precisely.
+    heading_tolerance: 0.08   # rad
+
+    # Bug1 obstacle avoidance
+    obstacle_distance: 0.50   # front-arc stop threshold (m) — wider for thin legs
+    obstacle_angle_deg: 55.0  # half-angle of front arc (deg)
+    wall_follow_dist: 0.45    # target lateral distance from wall while circumnavigating (m)
+
+    # ── Local costmap (rolling LiDAR memory) ──────────────────────────
+    # Lets the robot remember recent LiDAR hits over a short horizon so
+    # transient noise decays away but persistent obstacles stay marked.
+    local_costmap_radius:        2.0   # m — half side of the patch around the robot
+    local_costmap_decay_tau:     0.7   # s — exponential decay time constant
+    local_costmap_occ_threshold: 0.4   # cell score above which a cell counts as occupied
+
+    # ── Continuous path validity check ────────────────────────────────
+    # Shortened from 3.0 → 1.0 m so we only react to obstacles IMMEDIATELY
+    # in front of the robot.  A wide lookahead caused replan flapping
+    # because distant costmap noise constantly flagged the path as bad.
+    path_validity_lookahead:     1.0
+    # Consecutive blocked ticks needed to trigger a replan.  Bumped from
+    # 3 → 12 (≈1.2 s at 10 Hz) so a single noisy scan doesn't fire a
+    # replan loop that swaps paths every tick.
+    path_blocked_hysteresis:     12
+    # Validity check inflation scaled relative to the PLAN-TIME inflation.
+    # Must be < 1.0, otherwise the check fires on every tick because A*
+    # places the path exactly at the planner inflation boundary.  0.5
+    # gives a 50 % safety margin without causing flap.
+    path_validity_inflation_factor: 0.5
+    # After a (re)plan, commit to the new path for at least this long
+    # before another validity-triggered replan can fire.  Only used when
+    # enable_validity_replan: true.
+    replan_cooldown:             3.0   # s
+    # Master switch.  When false (default), the robot commits to the
+    # path produced by the planner and never re-plans while FOLLOWING.
+    # Real obstacles are caught by the safety bubble + WAIT + Bug1.
+    # Flip to true if you want continuous re-planning around new
+    # obstacles detected in the costmap.
+    enable_validity_replan:      false
+
+    # ── Runtime safety bubble (off by default) ────────────────────────
+    # Margen ahora viene del `inflation_radius` del planeador, no de un
+    # check runtime que se confundía con ruido del LiDAR y frenaba al
+    # robot en abierto.  Cambia a true si quieres reactivar la detección
+    # runtime para obstáculos dinámicos (personas, cosas en movimiento).
+    enable_safety_bubble:        false
+    safety_bubble_radius:        0.30  # m  (techo, sólo si enable=true)
+    safety_bubble_min:           0.15  # m  (piso,  sólo si enable=true)
+
+    # ── Dynamic-obstacle wait policy ──────────────────────────────────
+    # When the safety bubble fires, wait this long (retrying replan
+    # each tick) before either (a) entering Bug1 if enable_bug1=true,
+    # or (b) giving up on the goal if enable_bug1=false (default).
+    wait_for_clear_timeout:      5.0   # s
+    # Bug1 fallback is OFF by default.  In a fully-mapped environment
+    # the planner already routes around static obstacles, and Bug1's
+    # wall-follow almost always terminates with "Bug1 blocked" because
+    # the circumnavigation can't get closer to the goal than the
+    # original hit point.  Set true if operating in maps with
+    # unmodelled obstacles you want the robot to physically go around.
+    enable_bug1:                 false

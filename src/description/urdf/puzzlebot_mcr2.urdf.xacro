@@ -1,0 +1,209 @@
+<?xml version="1.0"?>
+<robot name="puzzlebot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Arguments -->
+  <xacro:arg name="is_ignition" default="true"/>
+  <xacro:arg name="is_sim" default="true"/>
+
+  <!-- Include Gazebo plugins -->
+  <xacro:include filename="$(find description)/urdf/puzzlebot_gazebo.xacro" />
+
+  <!-- Include ros2_control -->
+  <xacro:include filename="$(find description)/urdf/puzzlebot_ros2_control.xacro" />
+
+  <!-- ==================== PROPERTIES ==================== -->
+  <xacro:property name="wheel_radius" value="0.05"/>
+  <xacro:property name="wheel_separation" value="0.19"/>
+  <xacro:property name="base_mass" value="1.0"/>
+  <xacro:property name="wheel_mass" value="0.1"/>
+  <xacro:property name="caster_mass" value="0.01"/>
+
+  <!-- LiDAR mounting yaw — physical RPLidar A1 on the MCR2 ships rotated 180°
+       (motor/cable facing rear); Gazebo's gpu_lidar emits ray 0 along +X. -->
+  <xacro:property name="lidar_yaw" value="${0.0 if '$(arg is_sim)' == 'true' else 3.141592653589793}"/>
+
+  <!-- Inertia macros -->
+  <xacro:macro name="cylinder_inertia" params="m r h">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(3*r*r+h*h)/12}" ixy="0.0" ixz="0.0"
+               iyy="${m*(3*r*r+h*h)/12}" iyz="0.0"
+               izz="${m*r*r/2}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="box_inertia" params="m x y z">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(y*y+z*z)/12}" ixy="0.0" ixz="0.0"
+               iyy="${m*(x*x+z*z)/12}" iyz="0.0"
+               izz="${m*(x*x+y*y)/12}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="sphere_inertia" params="m r">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${2*m*r*r/5}" ixy="0.0" ixz="0.0"
+               iyy="${2*m*r*r/5}" iyz="0.0"
+               izz="${2*m*r*r/5}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ==================== LINKS ==================== -->
+
+  <!-- base_footprint: ground-level reference frame -->
+  <link name="base_footprint"/>
+
+  <!-- base_link: robot centre, raised above base_footprint -->
+  <link name="base_link">
+    <xacro:box_inertia m="${base_mass}" x="0.2" y="0.15" z="0.06"/>
+    <visual>
+      <origin xyz="0.050 0 0.0965" rpy="1.5708 0 3.1416"/>
+      <geometry>
+        <mesh filename="package://description/meshes/MCR2_puzzlebot_jetson_lidar_base.stl"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.2 0.15 0.06"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Right wheel -->
+  <link name="wheel_right_link">
+    <xacro:cylinder_inertia m="${wheel_mass}" r="${wheel_radius}" h="0.02"/>
+    <visual>
+      <origin xyz="0.055 -0.0048 0" rpy="1.57 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/MCR2_wheel.stl"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="${wheel_radius}" length="0.02"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Left wheel -->
+  <link name="wheel_left_link">
+    <xacro:cylinder_inertia m="${wheel_mass}" r="${wheel_radius}" h="0.02"/>
+    <visual>
+      <origin xyz="0.055 0.0048 0" rpy="-1.57 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/MCR2_wheel.stl"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="${wheel_radius}" length="0.02"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Caster wheel -->
+  <link name="caster_link">
+    <xacro:sphere_inertia m="${caster_mass}" r="0.015"/>
+    <visual>
+      <origin xyz="0 0 -0.015" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/MCR2_caster_wheel.stl"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Lidar link (visual already part of MCR2 base mesh) -->
+  <link name="lidar_link">
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!-- Camera link (visual already part of MCR2 base mesh) -->
+  <link name="camera_link">
+    <inertial>
+      <mass value="0.02"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!-- ==================== JOINTS ==================== -->
+
+  <!-- base_footprint -> base_link -->
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0.0 0.0 0.05" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+  <!-- base_link -> wheel_right_link -->
+  <joint name="wheel_right_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_right_link"/>
+    <origin xyz="0.052 -0.095 -0.0025" rpy="0.0 0.0 0.0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- base_link -> wheel_left_link -->
+  <joint name="wheel_left_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_left_link"/>
+    <origin xyz="0.052 0.095 -0.0025" rpy="0.0 0.0 0.0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- base_link -> caster_link -->
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_link"/>
+    <origin xyz="-0.095 0 -0.0307" rpy="0 0 0"/>
+  </joint>
+
+  <!-- base_link -> lidar_link -->
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0.05 0 0.110" rpy="0 0 ${lidar_yaw}"/>
+  </joint>
+
+  <!-- base_link -> camera_link -->
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.112 0 0.065" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Materials -->
+  <material name="dark_grey">
+    <color rgba="0.3 0.3 0.3 1.0"/>
+  </material>
+  <material name="grey">
+    <color rgba="0.5 0.5 0.5 1.0"/>
+  </material>
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+
+</robot>

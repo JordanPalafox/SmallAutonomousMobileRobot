@@ -1,0 +1,14 @@
+voice_node:
+  ros__parameters:
+    # Path to the HMM models directory (leave empty to use package default)
+    models_dir: ""
+
+    # Audio capture
+    sample_rate: 16000
+
+    # Grammar parsing
+    word_buffer_size: 5
+
+    # Set true to use /mock_voice topic instead of real microphone
+    # (recommended when running voice recognition via the web dashboard)
+    mock_mode: true

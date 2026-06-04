@@ -1,0 +1,73 @@
+roller_dims:
+  largo: 0.12
+  ancho: 0.16
+  z: 0.065
+groups:
+  R1:
+  - cx: 4.79
+    cy: 0.55
+    yaw: 0
+  - cx: 4.67
+    cy: 0.55
+    yaw: 0
+  - cx: 4.55
+    cy: 0.55
+    yaw: 0
+  - cx: 4.43
+    cy: 0.55
+    yaw: 0
+  R2:
+  - cx: 4.79
+    cy: 0.94
+    yaw: 0
+  - cx: 4.67
+    cy: 0.94
+    yaw: 0
+  - cx: 4.55
+    cy: 0.94
+    yaw: 0
+  - cx: 4.43
+    cy: 0.94
+    yaw: 0
+  R3:
+  - cx: 4.79
+    cy: 1.33
+    yaw: 0
+  - cx: 4.67
+    cy: 1.33
+    yaw: 0
+  - cx: 4.55
+    cy: 1.33
+    yaw: 0
+  - cx: 4.43
+    cy: 1.33
+    yaw: 0
+  R4:
+  - cx: 4.79
+    cy: 1.72
+    yaw: 0
+  - cx: 4.67
+    cy: 1.72
+    yaw: 0
+  - cx: 4.55
+    cy: 1.72
+    yaw: 0
+  - cx: 4.43
+    cy: 1.72
+    yaw: 0
+  R5:
+  - cx: 4.63
+    cy: 3.09
+    yaw: 90
+  - cx: 4.63
+    cy: 2.97
+    yaw: 90
+  - cx: 4.63
+    cy: 2.85
+    yaw: 90
+  - cx: 4.63
+    cy: 2.73
+    yaw: 90
+  - cx: 4.63
+    cy: 2.61
+    yaw: 90

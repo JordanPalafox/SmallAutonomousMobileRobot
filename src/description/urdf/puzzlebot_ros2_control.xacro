@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="puzzlebot">
+
+  <ros2_control name="RobotSystem" type="system">
+
+    <!-- Simulation hardware -->
+    <xacro:if value="$(arg is_sim)">
+      <xacro:if value="$(arg is_ignition)">
+        <hardware>
+          <plugin>ign_ros2_control/IgnitionSystem</plugin>
+        </hardware>
+      </xacro:if>
+      <xacro:unless value="$(arg is_ignition)">
+        <hardware>
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </hardware>
+      </xacro:unless>
+    </xacro:if>
+
+    <!-- Lifter prismatic joints -->
+    <joint name="mast_inner_joint">
+      <command_interface name="effort">
+        <param name="min">-100.0</param>
+        <param name="max">100.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="carriage_joint">
+      <command_interface name="effort">
+        <param name="min">-50.0</param>
+        <param name="max">50.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <!-- Wheel joints -->
+    <joint name="wheel_left_joint">
+      <command_interface name="velocity">
+        <param name="min">-5</param>
+        <param name="max">5</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="wheel_right_joint">
+      <command_interface name="velocity">
+        <param name="min">-5</param>
+        <param name="max">5</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+  </ros2_control>
+
+</robot>
