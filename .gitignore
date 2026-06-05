@@ -8,4 +8,6 @@ docs/
 FULL_INSTRUCTIONS.md
 .claude/memory/
 *.pyc
+*.bak
+__pycache__/
 actions-runner/

@@ -45,6 +45,8 @@ setup(
             'approach_stop_debug = perception.approach_stop_debug:main',
             'logo_stop_debug = perception.logo_stop_debug:main',
             'logo_classifier = perception.logo_classifier:main',
+            'aruco_pose_node = perception.aruco_pose_node:main',
+            'aruco_localization = perception.aruco_localization:main',
         ],
     },
 )

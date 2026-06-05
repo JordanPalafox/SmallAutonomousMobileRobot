@@ -75,6 +75,7 @@ def generate_launch_description():
     slam_params_path    = os.path.join(pkg_slam, 'config', 'slam_params.yaml')
     lifting_params_path = os.path.join(pkg_lifting, 'config', 'lifting_params.yaml')
     camera_params_path  = os.path.join(pkg_perception, 'config', 'camera_params.yaml')
+    aruco_map_path      = os.path.join(pkg_perception, 'config', 'aruco_map.yaml')
 
     map_yaml_default = os.path.expanduser('~/ros2_maps/warehouse.yaml')
 
@@ -159,6 +160,20 @@ def generate_launch_description():
                     'ideal dock pose (QR "Popsi", 640x360): dist_qr=281mm, '
                     'cx=325.6px, cy=245.9px (50/50 detections). Read the live "d=..mm" '
                     'in the dashboard to retune.')
+
+    # ArUco re-localisation. Runs HERE on the Jetson (local camera + local
+    # slam_node) so the /aruco_pose_estimate → slam_node correction has NO WiFi
+    # latency. Detecta los marcadores del piso y publica la pose absoluta del
+    # robot en `map`; slam_node la usa para reposicionarse cuando deriva en
+    # zonas ambiguas y deja que el scan la encaje con las paredes.
+    aruco_arg = DeclareLaunchArgument(
+        'aruco', default_value='true',
+        description='Run aruco_localization (floor ArUco re-localisation).')
+    aruco_pitch_arg = DeclareLaunchArgument(
+        'aruco_cam_pitch_deg', default_value='0.0',
+        description='Inclinación hacia abajo de la cámara [grados]. Markers en '
+                    'MURO (verticales) → cámara casi horizontal (0). MEDIR en el '
+                    'montaje real.')
 
     laser_frame_bridge = Node(
         package='tf2_ros',
@@ -293,6 +308,33 @@ def generate_launch_description():
         output='screen', emulate_tty=True,
     )])
 
+    # ── 7. ArUco re-localisation (local camera → no WiFi lag) ──────────
+    # Delayed 2 s so the camera driver is up. Detecta los ArUco del piso
+    # (DICT_ARUCO_ORIGINAL 5x5, 9 cm), estima la pose del robot en `map` con el
+    # aruco_map.yaml y la publica en /aruco_pose_estimate. slam_node (local) la
+    # consume para reposicionarse. La cámara real publica en /video_source/raw.
+    aruco_node = TimerAction(period=2.0, actions=[Node(
+        package='perception', executable='aruco_localization', name='aruco_localization',
+        parameters=[{
+            'use_sim_time':   False,
+            'image_topic':    '/video_source/raw',
+            'camera_params':  camera_params_path,
+            'aruco_map':      aruco_map_path,
+            'marker_length':  0.09,
+            'dictionary':     'original',
+            'map_frame':      'map',
+            'cam_xyz':        [0.10, 0.0, 0.16],   # cámara frontal, 16 cm del piso
+            'cam_pitch_deg':  ParameterValue(LaunchConfiguration('aruco_cam_pitch_deg'), value_type=float),
+            # El robot arranca en el CENTRO de la pista (origen del frame `map`
+            # del SLAM) y los ArUco se midieron desde la esquina (0,0), así que
+            # el origen del aruco_map en `map` = -(ancho/2, alto/2) de 3.65x4.85.
+            'aruco_origin_in_map': [-1.825, -2.425, 0.0],
+            'publish_debug_image': True,
+        }],
+        condition=IfCondition(LaunchConfiguration('aruco')),
+        output='screen', emulate_tty=True,
+    )])
+
     return LaunchDescription([
         start_mode_arg,
         map_yaml_arg,
@@ -303,6 +345,8 @@ def generate_launch_description():
         qr_arg,
         qr_dry_run_arg,
         qr_dock_dist_arg,
+        aruco_arg,
+        aruco_pitch_arg,
         laser_frame_bridge,
         controller_launch,
         slam_node,
@@ -310,4 +354,5 @@ def generate_launch_description():
         lifting_node,
         logo_stop_node,
         qr_node,
+        aruco_node,
     ])

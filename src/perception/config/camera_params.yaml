@@ -8,6 +8,6 @@ camera:
   camera_matrix: [646.878492, 0.000000, 280.316476, 0.000000, 647.047755, 166.832364, 0.000000, 0.000000, 1.000000]
   # Distortion coefficients [k1, k2, p1, p2, k3]
   distortion_coefficients: [0.105333, 0.320207, -0.006615, -0.023090, -1.054484]
-  # Physical side length of ArUco markers in metres
-  marker_length: 0.05
+  # Physical side length of ArUco markers in metres (DICT_ARUCO_ORIGINAL 5x5)
+  marker_length: 0.09
   # calibrated_at: 2026-05-26 (320x240) -> scaled to 640x360 analytically 2026-06
