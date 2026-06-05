@@ -39,7 +39,7 @@ def aruco2gz(ax, ay, az, ayaw_deg, inset=0.0):
     gz_x   = ay + inset * math.sin(th)
     gz_y   = (MAP_W - ax) - inset * math.cos(th)
     gz_z   = az
-    yaw_gz = th
+    yaw_gz = th - math.pi / 2
     return gz_x, gz_y, gz_z, yaw_gz
 
 
@@ -47,16 +47,11 @@ def marker_sdf(m):
     mid            = m['id']
     inset          = INSET if str(m.get('group', '')).startswith('wall') else 0.0
     gx, gy, gz, yaw_gz = aruco2gz(m['x'], m['y'], m['z'], m['yaw_deg'], inset)
-    # La caja de Gazebo espeja la textura para markers que miran a +gz (yaw 90 o
-    # 180). Para esos usamos la textura pre-volteada (<id>_flip.jpg) para que se
-    # vea derecha. Ruta portable via GZ_SIM_RESOURCE_PATH (share de description).
-    needs_flip     = round(m['yaw_deg']) % 360 in (90, 180)
-    tex            = f"{mid}_flip" if needs_flip else f"{mid}"
-    img            = f"model://description/textures/arucos/{tex}.jpg"
-    # Marcador VERTICAL con imagen derecha: cara (Z local) -> normal horizontal,
-    # arriba (Y local) -> +Z mundo.  roll=pi/2, pitch=0, yaw=yaw_gz (=yaw_deg).
-    roll           = math.pi / 2
-    pitch          = 0.0
+    # Ruta portable via GZ_SIM_RESOURCE_PATH (share de description).
+    img            = f"model://description/textures/arucos/{mid}.jpg"
+    # Rotación de rosendo (la que funciona): cara horizontal + imagen derecha.
+    roll           = math.pi
+    pitch          = -math.pi / 2
     return (
         f'    <model name="aruco_{mid}"><static>true</static>\n'
         f'      <pose>{gx:.4f} {gy:.4f} {gz:.4f} {roll:.5f} {pitch:.5f} {yaw_gz:.5f}</pose>\n'
