@@ -59,6 +59,10 @@ class Pick(DebuggableState):
         vision_fresh_s: float,
         transport_level: int,
         state_name: str = "PICK",
+        center_kp: float = 0.0,
+        center_w_max: float = 0.10,
+        center_deadband_px: float = 12.0,
+        center_fresh_s: float = 1.0,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -82,6 +86,14 @@ class Pick(DebuggableState):
         self._vision_stop = bool(vision_stop)
         self._vision_fresh = float(vision_fresh_s)
         self._transport_level = int(transport_level)
+        # Logo CENTERING during the approach creep (center_kp>0): steer on the
+        # logo's lateral error so the lifter enters the pallet straight. Used by
+        # both the roller (this base) and the rack (PickFromRack) — each gets its
+        # own gain via params; 0 = straight creep (no centering).
+        self._center_kp = float(center_kp)
+        self._center_w_max = float(center_w_max)
+        self._center_deadband_px = float(center_deadband_px)
+        self._center_fresh_s = float(center_fresh_s)
 
     def run(self, blackboard: Blackboard) -> str:
         mission = bb_get(blackboard, "current_mission") or {}
@@ -173,6 +185,11 @@ class Pick(DebuggableState):
         if outcome == "timeout":
             return "failed"
 
+        # Record the carry height so NAV_TO_TRUCK can RE-ASSERT it if the lifter
+        # gets perturbed mid-route (dashboard button, a lifting_node restart).
+        # Works for both this state and PICK_FROM_RACK (which inherits run()).
+        blackboard["carry_lifter_level"] = self._transport_level
+
         return "done" if mission.get("pick_only") else "picked"
 
     # ------------------------------------------------------------------
@@ -180,11 +197,12 @@ class Pick(DebuggableState):
         """Step 3: close the final gap to the load. Returns 'stop' on abort,
         any other string on success.
 
-        Base (roller) strategy: creep forward stopping by VISION (Electric-80
-        logo at target distance) BEFORE contact, with wheel-stall + a time limit
-        as safety fallbacks — this is the brownout-safe approach for the roller.
-        PICK_FROM_RACK overrides this with a fixed odometry advance, because the
-        rack QR and logo drop out of the camera frame at the close pick pose.
+        Creep forward stopping by VISION (the Electric-80 logo at target
+        distance) BEFORE contact, with wheel-stall + a time limit as safety
+        fallbacks (brownout-safe). When ``center_kp`` > 0 the creep also CENTERS
+        on the logo (steer on /approach_stop/center_error) so the lifter enters
+        the pallet straight. PICK_FROM_RACK extends this with a small fixed
+        odometry advance after the stop.
         """
         return drive_until_approach_stop(
             self._debug, blackboard, self._publish_cmd,
@@ -193,4 +211,6 @@ class Pick(DebuggableState):
             stall_ticks=self._stall_ticks,
             vision_enabled=self._vision_stop,
             vision_fresh_s=self._vision_fresh,
-            tag="PICK fwd")
+            tag="PICK fwd",
+            center_kp=self._center_kp, center_deadband_px=self._center_deadband_px,
+            center_w_max=self._center_w_max, center_fresh_s=self._center_fresh_s)

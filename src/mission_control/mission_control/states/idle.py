@@ -38,6 +38,7 @@ class Idle(DebuggableState):
             "current_candidate",
             "qr_value",
             "resolved_dest",
+            "carry_lifter_level",
             "mission_error_reason",
         ):
             blackboard[key] = None

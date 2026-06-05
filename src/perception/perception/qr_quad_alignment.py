@@ -184,7 +184,16 @@ class QRQuadAlignmentNode(Node):
         # dock_target_dist. Works for any QR height. 0.0 = keep pixel-cy mode.
         self.declare_parameter('dock_target_dist', 0.0)   # m (0 = pixel-cy mode)
         self.declare_parameter('dock_dist_tol', 0.03)     # m tolerance for DONE
-        self.declare_parameter('kp_v_dock_dist', 0.30)    # m/s per m of distance error
+        # Forward gain (m/s per m) for the ROLLER dock. Must keep v_raw =
+        # kp*dist_err above the motor deadband (0.015 m/s) all the way to
+        # dock_dist_tol, else the dock FREEZES short (v drops to 0 while dist_err
+        # > tol, QR still in frame) — the same stuck-in-DOCK the rack fixed. At
+        # 0.30 it froze ~5 cm short (0.30*0.05=deadband). 0.6: at dist_err=tol
+        # (0.03) v_raw=0.018 >= deadband, so it reaches DONE while still moving.
+        # Matches the rack's anti-freeze gain (rack uses 0.6-0.8). The speed CAP
+        # (dock_max_linear) is unchanged, so the far approach is no faster — only
+        # the near-target stall is removed.
+        self.declare_parameter('kp_v_dock_dist', 0.6)     # m/s per m of distance error
         # Losing the QR while already centred + near the target means we closed
         # in enough that the marker left the frame — that's a successful dock,
         # not a "search". After this many consecutive centred ticks, a QR loss

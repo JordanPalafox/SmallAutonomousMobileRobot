@@ -104,11 +104,17 @@ class LogoStopDebug(Node):
         # Publicar la vista anotada aunque corra headless (Jetson) para verla
         # en remoto con rqt_image_view. Apagar en produccion para ahorrar CPU.
         self.declare_parameter('publish_debug', True)
-        # Solo publica should_stop=True cuando /robot_state == active_state
-        # (p.ej. 'PICK_FROM_RACK'). Vacío = siempre activo. Permite correr este
-        # detector en el LAPTOP con el template del RACK sin afectar el pick de
-        # roller, y se salta el matching fuera de ese estado (ahorra CPU).
-        self.declare_parameter('active_state', '')
+        # Per-pick-type LOGO profiles: the DEFAULT params above are the ROLLER
+        # profile; a RACK profile (its own template + thresholds) is selected
+        # when /robot_state == rack_state. active_states (comma list) gates the
+        # node — it only matches + publishes when /robot_state is one of them
+        # (skips the heavy matchTemplate otherwise, ahorra CPU). Empty = always.
+        self.declare_parameter('active_states', '')
+        self.declare_parameter('rack_state', 'PICK_FROM_RACK')
+        self.declare_parameter('rack_template_path', '')
+        self.declare_parameter('rack_stop_scale', 0.95)
+        self.declare_parameter('rack_roi_top_pct', 30)
+        self.declare_parameter('rack_match_thr', 0.40)
 
         self._image_topic = str(self.get_parameter('image_topic').value)
         qos_name = str(self.get_parameter('qos').value).lower()
@@ -132,7 +138,9 @@ class LogoStopDebug(Node):
         self._d_inl = int(self.get_parameter('min_inliers').value)
         self._d_width = int(self.get_parameter('stop_width').value)
         self._publish_debug = bool(self.get_parameter('publish_debug').value)
-        self._active_state = str(self.get_parameter('active_state').value).strip().upper()
+        self._active_states = {s.strip().upper() for s in
+            str(self.get_parameter('active_states').value).split(',') if s.strip()}
+        self._rack_state = str(self.get_parameter('rack_state').value).strip().upper()
         self._robot_state = ''
 
         # ---- QoS ----
@@ -168,6 +176,33 @@ class LogoStopDebug(Node):
         self._ref_des = None
         self._tpl_path = self._resolve_template_path(self._tpl_path)
         self._load_reference(self._tpl_path)
+
+        # Per-pick-type profiles. Roller = the default params/template just
+        # loaded; rack = its own template + thresholds (optional). Switched by
+        # /robot_state in _robot_state_cb → _apply_logo_profile.
+        self._roller_prof = {
+            'gray': self._ref_gray, 'kp': self._ref_kp, 'des': self._ref_des,
+            'roi': self._d_roi, 'match': self._d_match, 'stopscale': self._d_stopscale,
+        }
+        self._rack_prof = None
+        rack_tpl = str(self.get_parameter('rack_template_path').value)
+        if rack_tpl:
+            rack_tpl = self._resolve_template_path(rack_tpl)
+            rg = cv2.imread(rack_tpl, cv2.IMREAD_COLOR)
+            if rg is not None:
+                rgg = cv2.cvtColor(rg, cv2.COLOR_BGR2GRAY)
+                rkp, rdes = self._orb.detectAndCompute(rgg, None)
+                self._rack_prof = {
+                    'gray': rgg, 'kp': rkp, 'des': rdes,
+                    'roi': int(self.get_parameter('rack_roi_top_pct').value),
+                    'match': int(round(float(self.get_parameter('rack_match_thr').value) * 100)),
+                    'stopscale': int(round(float(self.get_parameter('rack_stop_scale').value) * 100)),
+                }
+                self.get_logger().info(
+                    f'Perfil RACK: {rgg.shape[1]}x{rgg.shape[0]} de {rack_tpl} '
+                    f'(roi={self._rack_prof["roi"]} stop_scale={self._rack_prof["stopscale"]/100:.2f})')
+            else:
+                self.get_logger().warn(f'rack_template_path {rack_tpl!r} ilegible; sin perfil rack.')
 
         if self._show:
             try:
@@ -233,8 +268,27 @@ class LogoStopDebug(Node):
             return default
 
     # ------------------------------------------------------------------
+    def _apply_logo_profile(self, rack: bool) -> None:
+        """Switch the active template + thresholds to the RACK profile (when
+        /robot_state == rack_state) or the ROLLER/default profile. Only changes
+        when needed; if no rack profile is configured, stays on roller."""
+        if rack and self._rack_prof is None:
+            return
+        p = self._rack_prof if rack else self._roller_prof
+        if self._ref_gray is p['gray']:
+            return
+        self._ref_gray = p['gray']; self._ref_kp = p['kp']; self._ref_des = p['des']
+        self._d_roi = p['roi']; self._d_match = p['match']; self._d_stopscale = p['stopscale']
+        self.get_logger().info(
+            f'LOGO profile -> {"RACK" if rack else "ROLLER"} '
+            f'(roi={p["roi"]} stop_scale={p["stopscale"]/100:.2f} match_thr={p["match"]/100:.2f})')
+
     def _robot_state_cb(self, msg: String) -> None:
-        self._robot_state = (msg.data or '').strip().upper()
+        st = (msg.data or '').strip().upper()
+        if st == self._robot_state:
+            return
+        self._robot_state = st
+        self._apply_logo_profile(rack=(st == self._rack_state))
 
     # ------------------------------------------------------------------
     def _image_cb(self, msg: Image) -> None:
@@ -313,9 +367,10 @@ class LogoStopDebug(Node):
             return
         h, w = frame.shape[:2]
 
-        # Gate por estado del SM: si active_state está configurado y el SM no está
-        # en él, no hay paro (publica False) y se salta el matching (ahorra CPU).
-        if self._active_state and self._robot_state != self._active_state:
+        # Gate por estado del SM: si active_states está configurado y el SM no
+        # está en uno de ellos, no hay paro (publica False) y se salta el
+        # matching (ahorra CPU).
+        if self._active_states and self._robot_state not in self._active_states:
             self._hold = 0
             self._last_stop = False
             self._pub_stop.publish(Bool(data=False))

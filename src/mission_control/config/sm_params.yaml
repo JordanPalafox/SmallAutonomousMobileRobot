@@ -82,10 +82,10 @@ state_machine_node:
     # Misma maniobra que PICK pero con los niveles de lifter del rack. El número
     # se manda a la FPGA y ella mueve el fork a la altura correspondiente.
     # Secuencia: entry (forks listos) → dock → creep → lift (sube el pallet del
-    # rack) → reversa → transport (carga). Pedido: 1 → sube a 2 → reversa → baja a 1.
+    # rack) → reversa → transport (carga). Pedido: 2 → sube a 3 → reversa → queda en 3.
     pick_rack_entry_level:     2  # fork height BEFORE docking (rack)
     pick_rack_lift_level:      3  # height to lift the rack pallet
-    pick_rack_transport_level: 1  # lifter height after backing out (rack)
+    pick_rack_transport_level: 3  # lifter height after backing out (rack) — carga a 3 (igual que el roller)
     # Rack approach: QR-dock → creep CENTRANDO con el logo (gira para mantener el
     # pallet centrado, así el lifter entra derecho) hasta el logo-stop, luego un
     # avance fijo corto por odometría (el pallet del rack queda un poco más abajo).
@@ -107,6 +107,11 @@ state_machine_node:
     # old stall-only behaviour.
     pick_vision_stop:     true
     pick_vision_fresh_s:  1.0     # s — ignore a should_stop older than this (dead detector)
+    # Logo CENTERING para el approach del ROLLER (gira para mantener el pallet
+    # centrado, así el lifter entra derecho). 0 = creep recto. El rack usa sus
+    # propios pick_rack_center_*.
+    pick_center_kp:       0.0025  # rad/s por px de error de centrado del logo
+    pick_center_w_max:    0.10    # rad/s — tope del giro de centrado
     # Front-distance TELEMETRY only (shown in the dashboard; does NOT gate PICK).
     pick_front_arc_deg:   12.0    # half-angle of the "front" arc sampled from /scan
     laser_yaw_offset_deg: 180.0   # LiDAR mount yaw (rear-mounted on the real robot)

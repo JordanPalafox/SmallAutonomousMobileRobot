@@ -30,7 +30,7 @@ from yasmin import Blackboard
 from mission_control.debug_wrapper import DebuggableState, DebugContext
 from mission_control.bb_helpers import bb_get
 from mission_control.mission_parser import resolve_qr_to_waypoint
-from mission_control.states._actions import navigate
+from mission_control.states._actions import navigate, drive_lifter
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,9 @@ class NavToTruck(DebuggableState):
         self,
         debug_ctx: DebugContext,
         publish_goal_fn: Callable[[str], None],
+        publish_lifter_fn: Callable[[int], None],
         zones_data: dict,
+        lifter_timeout: float = 8.0,
         default_truck: str = "truck_1",
         resolve_from_qr: bool = False,
         **kwargs,
@@ -58,12 +60,37 @@ class NavToTruck(DebuggableState):
             abort_outcome="stop", **kwargs,
         )
         self._publish_goal = publish_goal_fn
+        self._publish_lifter = publish_lifter_fn
+        self._lifter_timeout = float(lifter_timeout)
         self._zones = zones_data
         self._default_truck = str(default_truck)
         self._resolve_from_qr = bool(resolve_from_qr)
 
     def run(self, blackboard: Blackboard) -> str:
         mission = bb_get(blackboard, "current_mission") or {}
+
+        # 0) RE-ASSERT the carry height before driving off. The lifter is NOT
+        # commanded anywhere between PICK and RELEASE_LOAD, so if it got perturbed
+        # (the dashboard lifter button, or a lifting_node restart — the Jetson GPIO
+        # HAL boots all pins LOW = level 0) the pallet would coast at the wrong
+        # height all the way to the truck. PICK records the height it left under
+        # carry_lifter_level; we re-command it here and wait for confirmation so the
+        # forks are back up BEFORE we move. A lifter timeout here is non-fatal (we
+        # still navigate) — it only means the status echo was slow, not that the
+        # mission failed. Skipped when no pick ran (RELEASE_ONLY: no pallet).
+        carry = bb_get(blackboard, "carry_lifter_level")
+        if carry is not None:
+            outcome = drive_lifter(
+                self._debug, blackboard, self._publish_lifter,
+                int(carry), self._lifter_timeout, tag="NAV_TO_TRUCK carry",
+            )
+            if outcome == "stop":
+                return "stop"
+            if outcome == "timeout":
+                logger.warning(
+                    "[NAV_TO_TRUCK] lifter did not confirm carry level %s; "
+                    "navigating anyway.", carry,
+                )
 
         # 1) An explicit destination (CUSTOM) always wins.
         dest = mission.get("destination")

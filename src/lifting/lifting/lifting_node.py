@@ -52,6 +52,14 @@ class LiftingNode(Node):
         self.declare_parameter('level_pick_rack2', 5)
         self.declare_parameter('level_max', 5)
 
+        # File the last commanded level is cached in, so a node RESTART (crash /
+        # relaunch) mid-mission restores the fork to where it was instead of
+        # dropping it. The Jetson GPIO HAL boots all pins LOW = level 0, so without
+        # this a restart while carrying a pallet to the truck would silently lower
+        # the load. /tmp is wiped on a full power cycle → a fresh boot still starts
+        # at the safe level 0; only an in-session restart restores.
+        self.declare_parameter('state_file', '/tmp/puzzlebot_lifter_level')
+
         hal: str = self.get_parameter('hal').get_parameter_value().string_value.lower()
 
         # ── HAL selection ─────────────────────────────────────────────
@@ -77,7 +85,21 @@ class LiftingNode(Node):
             self.get_logger().info('LiftingNode: using MockGpioDriver')
 
         self._driver.setup()
-        self._current_level: int = 0
+        self._state_file = self.get_parameter('state_file').get_parameter_value().string_value
+
+        # Restore the last commanded level after a mid-mission restart. setup()
+        # has already driven the HAL to its boot default (GPIO → level 0); if a
+        # cached level survives we re-drive the FPGA to it so the fork stays put.
+        restored = self._load_persisted_level()
+        if restored is not None:
+            self._driver.set_level(restored)
+            self._current_level = restored
+            self.get_logger().warn(
+                f'Restored lifter to last level {restored} from {self._state_file} '
+                f'(node restart — fork held, not dropped).'
+            )
+        else:
+            self._current_level = 0
 
         # ── ROS interfaces ────────────────────────────────────────────
         self._sub = self.create_subscription(
@@ -106,6 +128,7 @@ class LiftingNode(Node):
 
         result = self._driver.set_level(level)
         self._current_level = level
+        self._persist_level(level)
 
         bits = format(level, '03b')
         if result is not None:
@@ -119,6 +142,27 @@ class LiftingNode(Node):
         msg = UInt8()
         msg.data = self._current_level
         self._status_pub.publish(msg)
+
+    # ── Level persistence (survive a node restart) ─────────────────────
+
+    def _load_persisted_level(self) -> int | None:
+        """Read the last commanded level cached on disk. Returns a valid level
+        in [0, max] or None if the file is missing / unreadable / out of range."""
+        try:
+            with open(self._state_file, 'r', encoding='utf-8') as f:
+                level = int(f.read().strip())
+        except (FileNotFoundError, ValueError, OSError):
+            return None
+        return level if 0 <= level <= self._max_level else None
+
+    def _persist_level(self, level: int) -> None:
+        """Cache the current level so a restart can restore it. Best-effort —
+        a write failure is logged but never breaks lifter control."""
+        try:
+            with open(self._state_file, 'w', encoding='utf-8') as f:
+                f.write(str(int(level)))
+        except OSError as exc:
+            self.get_logger().warn(f'Could not persist lifter level: {exc}')
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 

@@ -130,7 +130,7 @@ class StateMachineNode(Node):
         # → creep → lift (pallet off the rack) → reverse → transport (carry).
         self.declare_parameter("pick_rack_entry_level", 2)     # fork height BEFORE docking (rack)
         self.declare_parameter("pick_rack_lift_level", 3)      # height to lift the rack pallet
-        self.declare_parameter("pick_rack_transport_level", 1) # lifter height after backing out (rack)
+        self.declare_parameter("pick_rack_transport_level", 3) # lifter height after backing out (rack) — carry at 3, same as roller
         # Rack approach: after the QR dock, creep with LOGO CENTERING (steer to
         # keep the pallet centred so the lifter enters straight) until the
         # logo-stop fires, then a small fixed odometry advance because the rack
@@ -155,6 +155,11 @@ class StateMachineNode(Node):
         # from a dead detector).
         self.declare_parameter("pick_vision_stop", True)
         self.declare_parameter("pick_vision_fresh_s", 1.0)
+        # Logo CENTERING for the ROLLER pick approach: steer on the logo's lateral
+        # error (/approach_stop/center_error) so the lifter enters straight. 0 =
+        # straight creep. The rack uses its own pick_rack_center_* gains.
+        self.declare_parameter("pick_center_kp", 0.0025)       # rad/s per px of logo centre error
+        self.declare_parameter("pick_center_w_max", 0.10)      # rad/s cap for the centering turn
         # Front-distance TELEMETRY only (shown in the dashboard; does NOT gate
         # the timed maneuver). Front arc + LiDAR mount yaw select the front rays.
         self.declare_parameter("pick_front_arc_deg", 12.0)
@@ -235,6 +240,8 @@ class StateMachineNode(Node):
         pick_stall_ticks       = int(self.get_parameter("pick_stall_ticks").value)
         pick_vision_stop       = bool(self.get_parameter("pick_vision_stop").value)
         pick_vision_fresh_s    = float(self.get_parameter("pick_vision_fresh_s").value)
+        pick_center_kp         = float(self.get_parameter("pick_center_kp").value)
+        pick_center_w_max      = float(self.get_parameter("pick_center_w_max").value)
         self._pick_front_arc   = _math.radians(float(self.get_parameter("pick_front_arc_deg").value))
         self._laser_yaw_offset = _math.radians(float(self.get_parameter("laser_yaw_offset_deg").value))
         self._pick_front_min_range = float(self.get_parameter("pick_front_min_range").value)
@@ -303,6 +310,8 @@ class StateMachineNode(Node):
             pick_stall_ticks=pick_stall_ticks,
             pick_vision_stop=pick_vision_stop,
             pick_vision_fresh_s=pick_vision_fresh_s,
+            pick_center_kp=pick_center_kp,
+            pick_center_w_max=pick_center_w_max,
             pick_transport_level=pick_transport_level,
             pick_rack_entry_level=pick_rack_entry_level,
             pick_rack_lift_level=pick_rack_lift_level,
@@ -347,6 +356,7 @@ class StateMachineNode(Node):
         bb["logo_order"]          = None    # latest left→right logos (/logo_order)
         bb["logo_order_at"]       = 0.0
         bb["resolved_dest"]       = None
+        bb["carry_lifter_level"]  = None    # height PICK left the forks at, re-asserted by NAV_TO_TRUCK
         bb["nav_status_prefix"]   = "IDLE"
         bb["nav_status_full"]     = "IDLE"
         bb["alignment_state"]     = "IDLE"
@@ -593,6 +603,8 @@ class StateMachineNode(Node):
         pick_stall_ticks: int,
         pick_vision_stop: bool,
         pick_vision_fresh_s: float,
+        pick_center_kp: float,
+        pick_center_w_max: float,
         pick_transport_level: int,
         pick_rack_entry_level: int,
         pick_rack_lift_level: int,
@@ -643,7 +655,8 @@ class StateMachineNode(Node):
                  pick_approach_speed, pick_forward_time, pick_reverse_time,
                  pick_reverse_speed, pick_entry_level, pick_lift_level,
                  pick_stall_grace, pick_stall_speed, pick_stall_ticks,
-                 pick_vision_stop, pick_vision_fresh_s, pick_transport_level, **kw),
+                 pick_vision_stop, pick_vision_fresh_s, pick_transport_level,
+                 center_kp=pick_center_kp, center_w_max=pick_center_w_max, **kw),
             transitions={
                 "picked": "NAV_TO_TRUCK",
                 "done":   "MISSION_DONE",     # PICK_ONLY test ends here
@@ -677,7 +690,8 @@ class StateMachineNode(Node):
         # STEP 3 — navega a la zona de camiones (default truck_1; QR-routing opt-in).
         sm.add_state(
             "NAV_TO_TRUCK",
-            NavToTruck(self._debug, self._publish_goal, self._zones,
+            NavToTruck(self._debug, self._publish_goal, self._publish_lifter,
+                       self._zones, lifter_timeout=lifter_timeout,
                        default_truck=truck_default_wp,
                        resolve_from_qr=truck_resolve_qr, **kw),
             transitions={

@@ -201,17 +201,20 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('logos')),
     )
 
-    # ── Logo-stop for the RACK pick approach ──────────────────────────
+    # ── Logo-stop + centring for the pick approach (roller AND rack) ──
     # Runs HERE on the laptop (the camera already crosses for qr_node) so the
-    # 2 GB Nano stays light. Uses the RACK logo template (the foreshortened
-    # top-view E80 logo captured at the rack ideal pose) and is GATED to
-    # PICK_FROM_RACK via active_state — it only fires during the rack pick and
-    # never touches the roller pick. The rack pick's approach is otherwise
-    # identical to the roller (PickFromRack inherits Pick's logo-stop creep).
+    # 2 GB Nano stays light. Per-pick-type LOGO profiles: the DEFAULT params are
+    # the ROLLER (template e80_logo_ref.png, used during PICK); a RACK profile
+    # (rack_* params, template e80_logo_ref_rack.png — the foreshortened top-view
+    # logo) is selected when /robot_state == PICK_FROM_RACK. Gated by
+    # active_states to the two PICK states (only matches + publishes then; skips
+    # the heavy matchTemplate otherwise). Publishes /approach_stop/should_stop
+    # (logo-stop) + /approach_stop/center_error (lateral logo error → the SM
+    # centres the creep so the lifter enters straight).
     logo_stop_arg = DeclareLaunchArgument(
         'logo_stop', default_value='true',
-        description='Run logo_stop_debug here with the RACK logo template, gated '
-                    'to PICK_FROM_RACK, for the rack pick approach-stop.')
+        description='Run logo_stop_debug here (roller + rack logo profiles, '
+                    'gated to PICK / PICK_FROM_RACK) for the pick approach-stop + centring.')
     logo_stop_node = Node(
         package='perception', executable='logo_stop_debug', name='logo_stop_debug',
         parameters=[{
@@ -221,13 +224,20 @@ def generate_launch_description():
             'show_window':   False,
             'process_hz':    12.0,
             'mode':          2,             # template multiescala
-            'template_path': os.path.join(pkg_perc, 'config', 'e80_logo_ref_rack.png'),
-            'stop_scale':    0.95,          # escala (1.0 = pose ideal) a la que para
-            'match_thr':     0.40,
-            'roi_top_pct':   30,            # logo en la franja inferior del cuadro
+            'active_states': 'PICK,PICK_FROM_RACK',
+            'rack_state':    'PICK_FROM_RACK',
+            # ROLLER profile (default) — used during PICK.
+            'template_path': os.path.join(pkg_perc, 'config', 'e80_logo_ref.png'),
+            'stop_scale':    0.85,
+            'match_thr':     0.45,
+            'roi_top_pct':   50,
             'hold_frames':   4,
             'publish_debug': True,
-            'active_state':  'PICK_FROM_RACK',  # solo dispara en el pick de rack
+            # RACK profile — used during PICK_FROM_RACK (foreshortened top view).
+            'rack_template_path': os.path.join(pkg_perc, 'config', 'e80_logo_ref_rack.png'),
+            'rack_stop_scale':    0.95,
+            'rack_match_thr':     0.40,
+            'rack_roi_top_pct':   30,
         }],
         output='screen',
         condition=IfCondition(LaunchConfiguration('logo_stop')),
