@@ -777,7 +777,7 @@
         </collision>
       </link></model>
     <model name="aruco_5"><static>true</static>
-      <pose>4.0750 0.0400 0.0400 1.57080 0.00000 3.14159</pose>
+      <pose>4.0750 0.0300 0.0400 1.57080 0.00000 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -795,7 +795,7 @@
         </collision>
       </link></model>
     <model name="aruco_21"><static>true</static>
-      <pose>0.7900 0.0400 0.0600 1.57080 0.00000 3.14159</pose>
+      <pose>0.7900 0.0300 0.0600 1.57080 0.00000 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -813,7 +813,7 @@
         </collision>
       </link></model>
     <model name="aruco_7"><static>true</static>
-      <pose>4.5150 3.6100 0.0600 1.57080 0.00000 0.00000</pose>
+      <pose>4.5150 3.6200 0.0600 1.57080 0.00000 0.00000</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -831,7 +831,7 @@
         </collision>
       </link></model>
     <model name="aruco_37"><static>true</static>
-      <pose>0.9500 3.6100 0.0550 1.57080 0.00000 0.00000</pose>
+      <pose>0.9500 3.6200 0.0550 1.57080 0.00000 0.00000</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -849,7 +849,7 @@
         </collision>
       </link></model>
     <model name="aruco_13"><static>true</static>
-      <pose>4.8100 1.2500 0.0600 1.57080 0.00000 4.71239</pose>
+      <pose>4.8200 1.2500 0.0600 1.57080 0.00000 4.71239</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -867,7 +867,7 @@
         </collision>
       </link></model>
     <model name="aruco_17"><static>true</static>
-      <pose>4.8100 3.1450 0.0800 1.57080 0.00000 4.71239</pose>
+      <pose>4.8200 3.1450 0.0800 1.57080 0.00000 4.71239</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -885,7 +885,7 @@
         </collision>
       </link></model>
     <model name="aruco_22"><static>true</static>
-      <pose>0.0400 0.1200 0.0500 1.57080 0.00000 1.57080</pose>
+      <pose>0.0300 0.1200 0.0500 1.57080 0.00000 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -903,7 +903,7 @@
         </collision>
       </link></model>
     <model name="aruco_30"><static>true</static>
-      <pose>0.0400 2.0300 0.0450 1.57080 0.00000 1.57080</pose>
+      <pose>0.0300 2.0300 0.0450 1.57080 0.00000 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -921,7 +921,7 @@
         </collision>
       </link></model>
     <model name="aruco_38"><static>true</static>
-      <pose>0.0400 3.2500 0.0550 1.57080 0.00000 1.57080</pose>
+      <pose>0.0300 3.2500 0.0550 1.57080 0.00000 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -939,7 +939,7 @@
         </collision>
       </link></model>
     <model name="aruco_19"><static>true</static>
-      <pose>3.6200 2.3800 0.0450 1.57080 0.00000 1.57080</pose>
+      <pose>3.5800 2.3800 0.0450 1.57080 0.00000 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -957,7 +957,7 @@
         </collision>
       </link></model>
     <model name="aruco_41"><static>true</static>
-      <pose>2.4800 2.3700 0.0400 1.57080 0.00000 4.71239</pose>
+      <pose>2.5200 2.3700 0.0400 1.57080 0.00000 4.71239</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -975,7 +975,7 @@
         </collision>
       </link></model>
     <model name="aruco_20"><static>true</static>
-      <pose>3.6100 1.2500 0.0400 1.57080 0.00000 1.57080</pose>
+      <pose>3.5700 1.2500 0.0400 1.57080 0.00000 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -993,7 +993,7 @@
         </collision>
       </link></model>
     <model name="aruco_25"><static>true</static>
-      <pose>2.4600 1.2700 0.0500 1.57080 0.00000 4.71239</pose>
+      <pose>2.5000 1.2700 0.0500 1.57080 0.00000 4.71239</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -1011,7 +1011,7 @@
         </collision>
       </link></model>
     <model name="aruco_31"><static>true</static>
-      <pose>1.5200 2.3300 0.0650 1.57080 0.00000 3.14159</pose>
+      <pose>1.5200 2.2900 0.0650 1.57080 0.00000 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -1029,7 +1029,7 @@
         </collision>
       </link></model>
     <model name="aruco_28"><static>true</static>
-      <pose>1.5000 1.1900 0.0500 1.57080 0.00000 0.00000</pose>
+      <pose>1.5000 1.2300 0.0500 1.57080 0.00000 0.00000</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
