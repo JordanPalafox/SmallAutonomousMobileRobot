@@ -175,9 +175,12 @@ public:
     aruco_snap_tol_th_ = declare_parameter("aruco_snap_tol_theta", 0.15); // rad
     aruco_seed_sxy_ = declare_parameter("aruco_seed_sigma_xy", 0.20);   // m
     aruco_seed_sth_ = declare_parameter("aruco_seed_sigma_theta", 0.10); // rad
-    // Localizacion global: el primer ArUco fija la pose -> el robot se puede
-    // colocar en cualquier lado/angulo sin configurar initial_x/y/theta.
-    aruco_global_init_ = declare_parameter("aruco_global_init", true);
+    // MCL es el localizador PRINCIPAL; el ArUco es baliza de RESCATE (re-ancla
+    // cuando MCL deriva/se pierde, via onAruco snap-on-disagreement).
+    // aruco_global_init OPCIONAL (default false): si true, ademas fuerza que el
+    // PRIMER ArUco bootstrapee la pose (util si colocas el robot a ciegas sin
+    // initial pose). Con false, MCL arranca normal y el ArUco solo corrige.
+    aruco_global_init_ = declare_parameter("aruco_global_init", false);
 
     grid_ = std::make_unique<slam::OccupancyGrid>(mapw_, maph_, res_, l_occ, l_free,
                                                   l_min, l_max, dl_occ, dl_free, occ_stop);
@@ -867,7 +870,7 @@ private:
   bool aruco_en_=true;
   double aruco_snap_tol_=0.15, aruco_snap_tol_th_=0.15;
   double aruco_seed_sxy_=0.20, aruco_seed_sth_=0.10;
-  bool aruco_global_init_=true, aruco_localized_=false;
+  bool aruco_global_init_=false, aruco_localized_=false;
 
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
