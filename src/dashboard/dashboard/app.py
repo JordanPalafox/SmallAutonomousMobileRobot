@@ -67,7 +67,7 @@ def _get_hmm_recognizer():
 
 VALID_MISSION_TYPES = {
     "ROLLER_TO_TRUCK", "RACK_TO_TRUCK", "CUSTOM", "PICK_ONLY",
-    "SEARCH_ROLLERS", "SEARCH_RACKS",
+    "SEARCH_ROLLERS", "SEARCH_RACKS", "RELEASE_ONLY",
 }
 
 # ---------------------------------------------------------------------------
@@ -217,6 +217,9 @@ def get_state():
             "velocity": state.velocity,
             "lifter_level": state.lifter_level,
             "system_mode": state.system_mode,
+            "qr": state.qr,
+            "qr_age": (round(time.monotonic() - state.qr_stamp, 1)
+                       if state.qr_stamp else None),
         }
     )
 
@@ -231,7 +234,7 @@ _SM_OUTCOMES = {
     "IDLE":           ["mission_received"],
     "SEARCH":         ["found", "done", "not_found", "stop"],
     "PICK":           ["picked", "done", "failed", "stop"],
-    "NAV_TO_TRUCK":   ["arrived", "failed", "stop"],
+    "NAV_TO_TRUCK":   ["arrived", "done", "failed", "stop"],
     "PLACE":          ["placed", "failed", "stop"],
     "MISSION_DONE":   ["ok"],
     "MISSION_FAILED": ["ok"],
@@ -518,10 +521,10 @@ def send_goal():
 
 @app.route("/api/lifter", methods=["POST"])
 def set_lifter():
-    """Set the lifter target level. Body: {"level": 0..3}.
+    """Set the lifter target level. Body: {"level": 0..5}.
 
-    The robot's SPI HAL (Tang Nano) only reaches levels 0-3, so the UI and this
-    endpoint cap there even though the message field allows 0-7.
+    The lifter is 3-bit but the FPGA only implements 6 positions (000-101),
+    so the usable range is levels 0-5; the UI and this endpoint cap there.
     """
     if ros_bridge is None:
         return jsonify({"error": "ROS bridge not initialised"}), 503
@@ -529,9 +532,9 @@ def set_lifter():
     try:
         level = int(body.get("level"))
     except (TypeError, ValueError):
-        return jsonify({"error": "level must be an integer 0-3"}), 400
-    if not (0 <= level <= 3):
-        return jsonify({"error": "level must be 0-3"}), 400
+        return jsonify({"error": "level must be an integer 0-5"}), 400
+    if not (0 <= level <= 5):
+        return jsonify({"error": "level must be 0-5"}), 400
     ros_bridge.publish_lifter_level(level)
     return jsonify({"ok": True, "level": level})
 
@@ -870,6 +873,9 @@ def _background_socketio_emitter() -> None:
                     "map_png": map_b64,
                     "map_info": map_info,
                     "system_mode": state.system_mode,
+                    "qr": state.qr,
+                    "qr_age": (round(now - state.qr_stamp, 1)
+                              if state.qr_stamp else None),
                 },
             )
 

@@ -19,6 +19,32 @@ import cv2
 import numpy as np
 from geometry_msgs.msg import Pose
 
+# Optional ZBar backend (pyzbar). cv2.QRCodeDetector frequently DETECTS a QR
+# (returns corners) but fails to DECODE the payload (empty string), especially
+# on small/low-res/angled codes. ZBar reads the text far more reliably via its
+# `.data` attribute. If it isn't installed the detector degrades gracefully to
+# cv2-only decoding (so the node still runs) — install it for reliable reads:
+#     sudo apt install -y libzbar0 && pip install pyzbar
+try:  # pragma: no cover - optional dependency
+    from pyzbar import pyzbar as _pyzbar
+except Exception:  # noqa: BLE001
+    _pyzbar = None
+
+
+def _order_quad(pts: np.ndarray) -> Optional[np.ndarray]:
+    """Order 4 points as TL, TR, BR, BL to match ``_CORNER_TEMPLATE``.
+
+    Uses the classic sum/difference trick: TL has the smallest x+y, BR the
+    largest; TR the largest x-y, BL the smallest. Returns None if not 4 points.
+    """
+    pts = np.asarray(pts, dtype=np.float32).reshape(-1, 2)
+    if pts.shape[0] != 4:
+        return None
+    s = pts.sum(axis=1)
+    d = pts[:, 0] - pts[:, 1]
+    return np.array([pts[np.argmin(s)], pts[np.argmax(d)],
+                     pts[np.argmax(s)], pts[np.argmin(d)]], dtype=np.float32)
+
 
 # ---------------------------------------------------------------------------
 # Quaternion helper (copiado del aruco_detector para evitar dependencias cruzadas)
@@ -125,9 +151,18 @@ class QRPoseDetector:
         # (mucho mas estable que ITERATIVE en este caso). Disponible en OpenCV 4.0+
         self._pnp_flag = getattr(cv2, 'SOLVEPNP_IPPE_SQUARE', cv2.SOLVEPNP_ITERATIVE)
 
+        # ZBar (pyzbar) is used to actually READ the QR payload; cv2 stays in
+        # charge of corner detection + pose. None when pyzbar isn't installed.
+        self._pyzbar = _pyzbar
+
     @property
     def backend(self) -> str:
         return self._backend_name
+
+    @property
+    def pyzbar_available(self) -> bool:
+        """True if the ZBar string-decoder backend is installed."""
+        return self._pyzbar is not None
 
     # ------------------------------------------------------------------
     def _detect_corners(self, gray: np.ndarray) -> tuple[list[np.ndarray], list[str]]:
@@ -166,8 +201,118 @@ class QRPoseDetector:
         return corners_list, data_list
 
     # ------------------------------------------------------------------
+    def _decode_with_pyzbar(self, gray: np.ndarray) -> List[dict]:
+        """Read QR payloads with ZBar. Returns [{text, quad|None, cx, cy}, ...].
+
+        Empty if pyzbar isn't installed or nothing decoded. ``quad`` is the 4
+        ordered corners from ZBar's polygon (or its bounding rect as a fallback)
+        so a QR cv2 missed entirely can still get a pose.
+
+        Low-res cameras (the robot's is 320x240) put the QR at only a handful of
+        pixels, where ZBar can fail to lock the timing pattern. If the first
+        pass reads nothing on a small frame we retry on a 2x upscale and map the
+        coordinates back, which recovers many otherwise-undecodable far reads.
+        """
+        if self._pyzbar is None:
+            return []
+        out = self._pyzbar_pass(gray, 1.0)
+        if not out and max(gray.shape[:2]) < 800:
+            big = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+            out = self._pyzbar_pass(big, 2.0)
+        return out
+
+    def _pyzbar_pass(self, gray: np.ndarray, scale: float) -> List[dict]:
+        """One ZBar decode pass; coords divided by ``scale`` to map to the
+        original frame (so an upscaled retry stays in original pixel space)."""
+        try:
+            decoded = self._pyzbar.decode(gray)
+        except Exception:  # noqa: BLE001
+            return []
+        out: list[dict] = []
+        inv = 1.0 / float(scale)
+        for r in decoded:
+            raw = getattr(r, 'data', b'')
+            try:
+                text = raw.decode('utf-8', 'replace') if isinstance(raw, (bytes, bytearray)) else str(raw)
+            except Exception:  # noqa: BLE001
+                text = ''
+            if not text:
+                continue
+            poly = getattr(r, 'polygon', None)
+            quad = None
+            if poly and len(poly) == 4:
+                quad = _order_quad(np.array([[p.x, p.y] for p in poly], dtype=np.float32))
+            if quad is None:
+                rect = getattr(r, 'rect', None)
+                if rect is not None:
+                    quad = _order_quad(np.array([
+                        [rect.left, rect.top],
+                        [rect.left + rect.width, rect.top],
+                        [rect.left + rect.width, rect.top + rect.height],
+                        [rect.left, rect.top + rect.height],
+                    ], dtype=np.float32))
+            if quad is None:
+                continue
+            quad = quad * inv   # map back to original-frame pixels
+            out.append({
+                'text': text,
+                'quad': quad.astype(np.float32),
+                'cx': float(quad[:, 0].mean()),
+                'cy': float(quad[:, 1].mean()),
+            })
+        return out
+
+    def _result_from_corners(self, gray: np.ndarray, corners, data: str) -> Optional[dict]:
+        """Refine corners, solvePnP, and pack a detection dict (or None)."""
+        h, w = gray.shape[:2]
+        corners_f = np.asarray(corners, dtype=np.float32).reshape(-1, 2).copy()
+        if corners_f.shape != (4, 2) or not np.isfinite(corners_f).all():
+            return None
+
+        # cornerSubPix exige que el rect de busqueda quepa en la imagen.
+        if self._refine:
+            win = 5
+            pad = win + 2
+            xs, ys = corners_f[:, 0], corners_f[:, 1]
+            inside = (
+                (xs >= pad).all() and (xs < w - pad).all()
+                and (ys >= pad).all() and (ys < h - pad).all()
+            )
+            if inside:
+                try:
+                    term = (
+                        cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+                        30, 1e-3,
+                    )
+                    refined = cv2.cornerSubPix(
+                        gray, corners_f.reshape(-1, 1, 2),
+                        (win, win), (-1, -1), term,
+                    )
+                    corners_f = refined.reshape(-1, 2)
+                except cv2.error:
+                    pass  # seguimos con las esquinas crudas
+
+        ok, rvec, tvec = cv2.solvePnP(
+            self._obj_pts, corners_f.astype(np.float64),
+            self._K, self._dist, flags=self._pnp_flag,
+        )
+        if not ok:
+            return None
+        return {
+            'id': data,
+            'corners': corners_f,
+            'rvec': rvec.flatten(),
+            'tvec': tvec.flatten(),
+            'pose': _rvec_tvec_to_pose(rvec, tvec),
+        }
+
     def detect(self, frame: np.ndarray) -> List[dict]:
         """Detecta QRs y devuelve lista de dicts con pose.
+
+        cv2 finds the corners (and a pose); ZBar (pyzbar) reads the payload
+        string, which cv2's own decoder often returns empty. Each cv2 detection
+        with no string is matched to the nearest ZBar decode to fill it in, and
+        any QR cv2 missed but ZBar read is added from ZBar's polygon.
 
         Cada dict contiene:
             id      - texto decodificado (puede ser '' si no decodifico)
@@ -181,62 +326,42 @@ class QRPoseDetector:
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
         corners_list, data_list = self._detect_corners(gray)
-        if not corners_list:
-            return []
+        pyz = self._decode_with_pyzbar(gray)
 
-        h, w = gray.shape[:2]
         results: list[dict] = []
+        used = set()
         for corners, data in zip(corners_list, data_list):
-            corners_f = corners.astype(np.float32).copy()
-
-            if corners_f.shape != (4, 2):
+            corners_f = np.asarray(corners, dtype=np.float32).reshape(-1, 2)
+            if corners_f.shape != (4, 2) or not np.isfinite(corners_f).all():
                 continue
-            if not np.isfinite(corners_f).all():
+            # Match the nearest ZBar decode within this QR's own size, so we can
+            # fill an empty cv2 string AND dedupe (don't re-add it from ZBar).
+            if pyz:
+                cx = float(corners_f[:, 0].mean()); cy = float(corners_f[:, 1].mean())
+                span = float(max(corners_f.max(0) - corners_f.min(0)))
+                best_k, best_d2 = None, None
+                for k, z in enumerate(pyz):
+                    if k in used:
+                        continue
+                    d2 = (z['cx'] - cx) ** 2 + (z['cy'] - cy) ** 2
+                    if best_d2 is None or d2 < best_d2:
+                        best_k, best_d2 = k, d2
+                if best_k is not None and best_d2 <= (span * span + 1.0):
+                    used.add(best_k)
+                    if not data:
+                        data = pyz[best_k]['text']
+
+            r = self._result_from_corners(gray, corners_f, data)
+            if r is not None:
+                results.append(r)
+
+        # QRs cv2 missed entirely but ZBar decoded → add from ZBar's polygon.
+        for k, z in enumerate(pyz):
+            if k in used:
                 continue
-
-            # cornerSubPix exige que el rect de busqueda quepa en la imagen.
-            # Solo refinar si TODAS las esquinas tienen al menos `pad` pixeles
-            # de margen al borde (pad = winSize + zeroZone + 2 por seguridad).
-            if self._refine:
-                win = 5
-                pad = win + 2
-                xs, ys = corners_f[:, 0], corners_f[:, 1]
-                inside = (
-                    (xs >= pad).all() and (xs < w - pad).all()
-                    and (ys >= pad).all() and (ys < h - pad).all()
-                )
-                if inside:
-                    try:
-                        term = (
-                            cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
-                            30, 1e-3,
-                        )
-                        refined = cv2.cornerSubPix(
-                            gray, corners_f.reshape(-1, 1, 2),
-                            (win, win), (-1, -1), term,
-                        )
-                        corners_f = refined.reshape(-1, 2)
-                    except cv2.error:
-                        # Si falla la refinacion, seguimos con las esquinas crudas
-                        pass
-
-            ok, rvec, tvec = cv2.solvePnP(
-                self._obj_pts,
-                corners_f.astype(np.float64),
-                self._K,
-                self._dist,
-                flags=self._pnp_flag,
-            )
-            if not ok:
-                continue
-
-            results.append({
-                'id': data,
-                'corners': corners_f,
-                'rvec': rvec.flatten(),
-                'tvec': tvec.flatten(),
-                'pose': _rvec_tvec_to_pose(rvec, tvec),
-            })
+            r = self._result_from_corners(gray, z['quad'], z['text'])
+            if r is not None:
+                results.append(r)
 
         return results
 

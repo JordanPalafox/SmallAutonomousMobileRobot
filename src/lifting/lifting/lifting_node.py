@@ -3,8 +3,8 @@
 HAL backends
 ------------
 mock    — logs only, no hardware (development).
-jetson  — Jetson.GPIO, 3-bit binary on pins 11/13/15 (levels 0-7).
-spi     — spidev to Tang Nano 20K, 2-bit level packed in a byte (levels 0-3).
+jetson  — Jetson.GPIO, 3-bit binary on pins 11/13/15 (levels 0-5).
+spi     — spidev to Tang Nano 20K, 3-bit level packed in a byte (levels 0-5).
 
 Subscriptions
 -------------
@@ -50,7 +50,7 @@ class LiftingNode(Node):
         self.declare_parameter('level_pick_floor', 3)
         self.declare_parameter('level_carry', 4)
         self.declare_parameter('level_pick_rack2', 5)
-        self.declare_parameter('level_max', 7)
+        self.declare_parameter('level_max', 5)
 
         hal: str = self.get_parameter('hal').get_parameter_value().string_value.lower()
 
@@ -63,17 +63,17 @@ class LiftingNode(Node):
                 speed_hz=self.get_parameter('spi_speed_hz').get_parameter_value().integer_value,
                 mode=self.get_parameter('spi_mode').get_parameter_value().integer_value,
             )
-            self._max_level = 3  # 2 bits
-            self.get_logger().info('LiftingNode: using SpiGpioDriver (2-bit level)')
+            self._max_level = 5  # 3 bits, FPGA has 6 positions (000-101)
+            self.get_logger().info('LiftingNode: using SpiGpioDriver (3-bit level)')
         elif hal == 'jetson':
             from lifting.hal.jetson import JetsonGpioDriver
             self._driver = JetsonGpioDriver()
-            self._max_level = 7  # 3 bits
+            self._max_level = 5  # 3 bits, FPGA has 6 positions (000-101)
             self.get_logger().info('LiftingNode: using JetsonGpioDriver (3-bit level)')
         else:
             from lifting.hal.mock import MockGpioDriver
             self._driver = MockGpioDriver()
-            self._max_level = 7
+            self._max_level = 5
             self.get_logger().info('LiftingNode: using MockGpioDriver')
 
         self._driver.setup()
@@ -107,7 +107,7 @@ class LiftingNode(Node):
         result = self._driver.set_level(level)
         self._current_level = level
 
-        bits = format(level, '02b' if self._max_level == 3 else '03b')
+        bits = format(level, '03b')
         if result is not None:
             self.get_logger().info(
                 f'Lifter set to {level} ({bits}); FPGA echoed 0x{result:02X}'

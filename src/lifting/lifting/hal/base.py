@@ -15,8 +15,8 @@ class GpioDriver(ABC):
         """Set lifter to the given level via the underlying transport.
 
         Backends:
-            jetson — 3-bit binary on pins 11/13/15, levels 0-7.
-            spi    — 2-bit level packed in a byte, levels 0-3.
+            jetson — 3-bit binary on pins 11/13/15, levels 0-5.
+            spi    — 3-bit level packed in a byte, levels 0-5.
             mock   — logs only.
 
         Args:

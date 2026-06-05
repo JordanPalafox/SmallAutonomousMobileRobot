@@ -17,11 +17,13 @@ lifting_node:
     spi_speed_hz: 1000000
     spi_mode: 0
 
-    # Named operational levels (informational; consumers may use a subset
-    # depending on the active HAL's max level: jetson=7, spi=3)
-    level_rest: 0         # idle / powered off
-    level_transport: 1    # travelling with loaded pallet
-    level_pick_floor: 3   # pick pallet from floor / roller
-    level_carry: 4        # carrying height (jetson HAL only)
-    level_pick_rack2: 5   # pick pallet from rack level 2 (jetson HAL only)
-    level_max: 7          # maximum height (jetson HAL only)
+    # Named operational levels (informational). Both HALs are now 3-bit,
+    # but the FPGA only implements 6 positions, so the usable range is
+    # 0-5 (000-101) regardless of backend. The FPGA maps each level to a
+    # servo angle (level → angle): 0→95°, 1→70°, 2→65°, 3→40°, 4→25°, 5→0°.
+    level_rest: 0         # idle / powered off (95°)
+    level_transport: 1    # travelling with loaded pallet (70°)
+    level_pick_floor: 3   # pick pallet from floor / roller (40°)
+    level_carry: 4        # carrying height (25°)
+    level_pick_rack2: 5   # pick pallet from rack level 2 (0°)
+    level_max: 5          # maximum height (101)

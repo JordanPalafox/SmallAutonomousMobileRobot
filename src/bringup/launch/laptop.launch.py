@@ -60,6 +60,7 @@ def generate_launch_description():
     nav_params_path     = os.path.join(pkg_nav,  'config', 'nav_params.yaml')
     camera_params_path  = os.path.join(pkg_perc, 'config', 'camera_params.yaml')
     sm_params_path      = os.path.join(pkg_mc,   'config', 'sm_params.yaml')
+    logo_model_default  = os.path.join(pkg_perc, 'config', 'weights.pt')
     rviz_cfg_path    = os.path.join(pkg_slam, 'config', 'slam.rviz')
     urdf_path        = os.path.join(pkg_desc, 'urdf', 'puzzlebot_with_lifter.urdf.xacro')
 
@@ -99,6 +100,16 @@ def generate_launch_description():
                     'Calibrated 2026-06-03 at the ideal dock pose: dist_qr=330mm. '
                     'Set 0.0 for legacy pixel-cy mode. Read the live "d=..mm" in '
                     'the dashboard QR feed to retune.')
+    logos_arg = DeclareLaunchArgument(
+        'logos', default_value='true',
+        description='Launch logo_classifier (YOLO) here. Publishes /logo_order '
+                    '(left→right truck logos) which RELEASE_LOAD uses to deliver '
+                    'the pallet to the matching truck. Set false to disable.')
+    logo_model_arg = DeclareLaunchArgument(
+        'logo_model', default_value=logo_model_default,
+        description='Path to the YOLO weights.pt for logo_classifier. Default = '
+                    'perception/config/weights.pt; override with an absolute path '
+                    'if the model lives elsewhere.')
 
     start_mode = LaunchConfiguration('start_mode')
     map_yaml   = LaunchConfiguration('map_yaml')
@@ -159,6 +170,24 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('qr')),
     )
 
+    # ── Logo classifier (YOLO) ────────────────────────────────────────
+    # Recognises the 3 trailer logos (amazon/pepsi/walmart) in the Jetson
+    # camera feed and publishes them left→right on /logo_order. RELEASE_LOAD
+    # subscribes to that to deliver the pallet to the truck whose logo matches
+    # the pallet's QR. Headless (show_window off); /logo_debug is the viewer.
+    logo_classifier_node = Node(
+        package='perception', executable='logo_classifier', name='logo_classifier',
+        parameters=[{
+            'use_sim_time': False,
+            'model_path':   LaunchConfiguration('logo_model'),
+            'image_topic':  '/video_source/raw',
+            'show_window':  False,
+            'publish_debug': True,
+        }],
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('logos')),
+    )
+
     # ── Voice control ─────────────────────────────────────────────────
     voice_node = Node(
         package='voice_control', executable='voice_node', name='voice_node',
@@ -197,6 +226,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         start_mode_arg, map_yaml_arg, rviz_arg, qr_arg, qr_dry_run_arg, qr_dock_dist_arg,
+        logos_arg, logo_model_arg,
         robot_state_publisher,
         joint_state_publisher,
         map_odom_relay,
@@ -204,6 +234,7 @@ def generate_launch_description():
         mission_node,
         dashboard_node,
         qr_node,
+        logo_classifier_node,
         voice_node,
         rviz_node,
     ])

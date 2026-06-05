@@ -56,6 +56,13 @@ let _editMode    = false;
 let _pendingWp   = null;  // {x, y, theta} world coords of pending placement
 let _dragWp      = null;  // {wx0, wy0, wx1, wy1} live drag preview
 
+// Interactive view (zoom + pan), applied on top of the base letterbox.
+// scale 1 / pan (0,0) == the original fit-to-container view.
+let _view = {scale: 1, panX: 0, panY: 0};
+const MIN_ZOOM  = 1.0;
+const MAX_ZOOM  = 12.0;
+const ZOOM_STEP = 1.2;    // per wheel notch / button press
+
 // ---------------------------------------------------------------------------
 // Teleop state
 // ---------------------------------------------------------------------------
@@ -175,6 +182,13 @@ function updateTelemetry(data) {
 
   updateLifter(data.lifter_level ?? 0);
 
+  // Raw decoded QR string straight from perception (/qr_detected), independent
+  // of the SM — confirms the QR is actually DECODED (not just its box drawn).
+  if ('qr' in data) {
+    const age = (data.qr_age != null) ? ` (${data.qr_age}s)` : '';
+    setText('qrLive', data.qr ? `${data.qr}${age}` : '—');
+  }
+
   if (data.map_png) {
     _mapImg.src = 'data:image/png;base64,' + data.map_png;
   }
@@ -209,8 +223,8 @@ async function loadMapInfo() {
 // Lifter
 // ---------------------------------------------------------------------------
 
-// SPI HAL (Tang Nano) only reaches levels 0-3 on the real robot.
-const LIFTER_MAX = 3;
+// Lifter is 3-bit but the FPGA implements 6 positions (000-101): levels 0-5.
+const LIFTER_MAX = 5;
 
 function initLifter() {
   const row = document.getElementById('lifterButtons');
@@ -355,12 +369,12 @@ function initNavControls() {
 // Quick mission control — one-click missions + abort
 // ---------------------------------------------------------------------------
 
-async function _sendQuickMission(type) {
+async function _sendQuickMission(type, extra = {}) {
   try {
     const res  = await fetch('/api/mission', {
       method:  'POST',
       headers: {'Content-Type': 'application/json'},
-      body:    JSON.stringify({type}),
+      body:    JSON.stringify({type, ...extra}),
     });
     const json = await res.json();
     if (!res.ok || json.error) {
@@ -380,6 +394,8 @@ function initQuickControl() {
     ?.addEventListener('click', () => _sendQuickMission('RACK_TO_TRUCK'));
   document.getElementById('btnMissionPick')
     ?.addEventListener('click', () => _sendQuickMission('PICK_ONLY'));
+  document.getElementById('btnMissionRelease')
+    ?.addEventListener('click', () => _sendQuickMission('RELEASE_ONLY', {qr: 'Popsi'}));
   document.getElementById('btnMissionAbort')?.addEventListener('click', () => {
     if (!confirm('¿Abortar la misión actual?')) return;
     _smControl({action: 'abort'});
@@ -418,6 +434,27 @@ function canvasToWorld(cx, cy) {
 }
 
 // ---------------------------------------------------------------------------
+// MAP CANVAS — interactive zoom / pan view
+// ---------------------------------------------------------------------------
+
+// Zoom by `factor` while keeping the canvas point (mx, my) fixed under the
+// cursor.  Works the same whether driven by the wheel or the +/- buttons.
+function zoomViewAt(mx, my, factor) {
+  const next  = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, _view.scale * factor));
+  const ratio = next / _view.scale;
+  if (ratio === 1) return;            // already clamped at a bound
+  _view.panX  = mx - ratio * (mx - _view.panX);
+  _view.panY  = my - ratio * (my - _view.panY);
+  _view.scale = next;
+  // At the minimum zoom there is nothing to pan to — snap back to a clean fit.
+  if (_view.scale <= MIN_ZOOM + 1e-6) _view = {scale: MIN_ZOOM, panX: 0, panY: 0};
+}
+
+function resetView() {
+  _view = {scale: 1, panX: 0, panY: 0};
+}
+
+// ---------------------------------------------------------------------------
 // MAP CANVAS — main draw loop (10 Hz)
 // ---------------------------------------------------------------------------
 
@@ -446,18 +483,28 @@ function drawMapOverlay() {
     const imgRatio = iw / ih;
     const canRatio = cw / ch;
 
-    let drawW, drawH, drawX, drawY;
+    // Base letterbox rect (fit-to-container, scale 1).
+    let baseW, baseH, baseX, baseY;
     if (imgRatio >= canRatio) {
-      drawW = cw;
-      drawH = cw / imgRatio;
-      drawX = 0;
-      drawY = (ch - drawH) / 2;
+      baseW = cw;
+      baseH = cw / imgRatio;
+      baseX = 0;
+      baseY = (ch - baseH) / 2;
     } else {
-      drawH = ch;
-      drawW = ch * imgRatio;
-      drawX = (cw - drawW) / 2;
-      drawY = 0;
+      baseH = ch;
+      baseW = ch * imgRatio;
+      baseX = (cw - baseW) / 2;
+      baseY = 0;
     }
+
+    // Apply the interactive zoom/pan view transform on top of the letterbox.
+    // Markers and labels read drawX/drawW from _mapRender via worldToCanvas, so
+    // they follow the zoom/pan automatically while keeping a constant size.
+    const s = _view.scale;
+    const drawW = baseW * s;
+    const drawH = baseH * s;
+    const drawX = _view.panX + baseX * s;
+    const drawY = _view.panY + baseY * s;
 
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(_mapImg, drawX, drawY, drawW, drawH);
@@ -668,6 +715,8 @@ function initMapInteraction() {
 
   const DRAG_THRESHOLD_PX = 10;
   let downCx = 0, downCy = 0;
+  let _panning = false;            // left-drag panning (only outside edit mode)
+  let _lastPanCx = 0, _lastPanCy = 0;
 
   const evToCanvas = (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -677,66 +726,118 @@ function initMapInteraction() {
             (e.clientY - rect.top)  * scaleY];
   };
 
+  const navToNearbyWaypoint = (cx, cy) => {
+    for (const [name, wp] of Object.entries(_waypoints)) {
+      const [wpx, wpy] = worldToCanvas(wp.x, wp.y);
+      if (Math.hypot(cx - wpx, cy - wpy) < 14) {
+        sendGoalWaypoint(name);
+        const sel = document.getElementById('waypointSelect');
+        if (sel) sel.value = name;
+        return true;
+      }
+    }
+    return false;
+  };
+
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     // Don't start a drag while the popup is up
     if (!document.getElementById('waypointPopup').classList.contains('hidden')) return;
     const [cx, cy] = evToCanvas(e);
     downCx = cx; downCy = cy;
-    const [wx, wy] = canvasToWorld(cx, cy);
-    _dragWp = {wx0: wx, wy0: wy, wx1: wx, wy1: wy};
-    drawMapOverlay();
+    if (_editMode) {
+      // Edit mode: drag draws an RViz-style pose arrow for the new waypoint.
+      const [wx, wy] = canvasToWorld(cx, cy);
+      _dragWp = {wx0: wx, wy0: wy, wx1: wx, wy1: wy};
+      drawMapOverlay();
+    } else {
+      // Otherwise a left-drag pans the map.
+      _panning   = true;
+      _lastPanCx = cx; _lastPanCy = cy;
+      canvas.classList.add('panning');
+    }
   });
 
   window.addEventListener('mousemove', (e) => {
-    if (!_dragWp) return;
-    const [cx, cy] = evToCanvas(e);
-    const [wx, wy] = canvasToWorld(cx, cy);
-    _dragWp.wx1 = wx;
-    _dragWp.wy1 = wy;
-    drawMapOverlay();
+    if (_dragWp) {
+      const [cx, cy] = evToCanvas(e);
+      const [wx, wy] = canvasToWorld(cx, cy);
+      _dragWp.wx1 = wx;
+      _dragWp.wy1 = wy;
+      drawMapOverlay();
+    } else if (_panning) {
+      const [cx, cy] = evToCanvas(e);
+      _view.panX += cx - _lastPanCx;
+      _view.panY += cy - _lastPanCy;
+      _lastPanCx = cx; _lastPanCy = cy;
+      drawMapOverlay();
+    }
   });
 
   window.addEventListener('mouseup', (e) => {
-    if (!_dragWp || e.button !== 0) return;
-    const drag = _dragWp;
-    _dragWp = null;
-
+    if (e.button !== 0) return;
     const [cx, cy] = evToCanvas(e);
     const dragDistPx = Math.hypot(cx - downCx, cy - downCy);
+
+    // ---- Pan / click-to-navigate (outside edit mode) ----
+    if (_panning) {
+      _panning = false;
+      canvas.classList.remove('panning');
+      // A click that barely moved → treat as a tap on a waypoint, not a pan.
+      if (dragDistPx < DRAG_THRESHOLD_PX) navToNearbyWaypoint(cx, cy);
+      return;
+    }
+
+    // ---- Edit mode: place / delete waypoint ----
+    if (!_dragWp) return;
+    const drag = _dragWp;
+    _dragWp = null;
     drawMapOverlay();
 
-    if (_editMode) {
-      // Short click in edit mode → delete the waypoint under the cursor
-      // (if any).  Long drag → create a new waypoint with heading.
-      if (dragDistPx < DRAG_THRESHOLD_PX) {
-        for (const [name, wp] of Object.entries(_waypoints)) {
-          const [wpx, wpy] = worldToCanvas(wp.x, wp.y);
-          const dist = Math.hypot(cx - wpx, cy - wpy);
-          if (dist < 14) {
-            deleteWaypoint(name);
-            return;
-          }
-        }
-        return;   // click on empty space in edit mode: do nothing
-      }
-      // Map Y-axis: world Y up, canvas Y down → atan2 in world coords directly
-      const theta = Math.atan2(drag.wy1 - drag.wy0, drag.wx1 - drag.wx0);
-      _pendingWp = {x: drag.wx0, y: drag.wy0, theta};
-      showWaypointPopup(drag.wx0, drag.wy0, theta);
-    } else if (dragDistPx < DRAG_THRESHOLD_PX) {
-      // Short click outside edit mode → navigate to nearby waypoint
+    // Short click → delete the waypoint under the cursor (if any).
+    // Long drag → create a new waypoint with heading.
+    if (dragDistPx < DRAG_THRESHOLD_PX) {
       for (const [name, wp] of Object.entries(_waypoints)) {
         const [wpx, wpy] = worldToCanvas(wp.x, wp.y);
-        const dist = Math.hypot(cx - wpx, cy - wpy);
-        if (dist < 14) {
-          sendGoalWaypoint(name);
-          const sel = document.getElementById('waypointSelect');
-          if (sel) sel.value = name;
+        if (Math.hypot(cx - wpx, cy - wpy) < 14) {
+          deleteWaypoint(name);
           return;
         }
       }
+      return;   // click on empty space in edit mode: do nothing
     }
+    // Map Y-axis: world Y up, canvas Y down → atan2 in world coords directly
+    const theta = Math.atan2(drag.wy1 - drag.wy0, drag.wx1 - drag.wx0);
+    _pendingWp = {x: drag.wx0, y: drag.wy0, theta};
+    showWaypointPopup(drag.wx0, drag.wy0, theta);
+  });
+
+  // ---- Wheel to zoom, centred on the cursor (works in any mode) ----
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const [cx, cy] = evToCanvas(e);
+    zoomViewAt(cx, cy, e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+    drawMapOverlay();
+  }, {passive: false});
+
+  // ---- Double-click resets the view to the fit-to-container default ----
+  canvas.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    resetView();
+    drawMapOverlay();
+  });
+
+  // ---- Toolbar zoom buttons (zoom around the canvas centre) ----
+  const zoomBtn = (id, factor) =>
+    document.getElementById(id)?.addEventListener('click', () => {
+      zoomViewAt(canvas.width / 2, canvas.height / 2, factor);
+      drawMapOverlay();
+    });
+  zoomBtn('btnZoomIn',  ZOOM_STEP);
+  zoomBtn('btnZoomOut', 1 / ZOOM_STEP);
+  document.getElementById('btnZoomReset')?.addEventListener('click', () => {
+    resetView();
+    drawMapOverlay();
   });
 }
 
@@ -1448,6 +1549,10 @@ function _renderSmSnapshot(snap) {
   setText('smMissionType',      snap.mission_type || '—');
   setText('smCurrentCandidate', snap.current_candidate || '—');
   setText('smQrValue',          snap.qr_value || snap.qr_detected || '—');
+  setText('smLogoOrder',
+    Array.isArray(snap.logo_order) && snap.logo_order.length
+      ? snap.logo_order.join(' → ')
+      : '—');
   setText('smResolvedDest',     snap.resolved_dest || '—');
   setText('smCandidateQueue',
     Array.isArray(snap.candidate_queue) && snap.candidate_queue.length
@@ -1635,11 +1740,11 @@ function _buildMissionJson() {
   const pickup = parseInt(document.getElementById('pickupLevel').value, 10);
   const place = parseInt(document.getElementById('placeLevel').value, 10);
 
-  if (Number.isNaN(pickup) || pickup < 0 || pickup > 7) {
-    showToast('Pickup level must be 0–7', 'error'); return null;
+  if (Number.isNaN(pickup) || pickup < 0 || pickup > 5) {
+    showToast('Pickup level must be 0–5', 'error'); return null;
   }
-  if (Number.isNaN(place) || place < 0 || place > 7) {
-    showToast('Place level must be 0–7', 'error'); return null;
+  if (Number.isNaN(place) || place < 0 || place > 5) {
+    showToast('Place level must be 0–5', 'error'); return null;
   }
 
   const base = {type, pickup_level: pickup, place_level: place};

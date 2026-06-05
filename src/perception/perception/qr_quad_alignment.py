@@ -144,13 +144,24 @@ class QRQuadAlignmentNode(Node):
         # horizontalmente, cerca del borde inferior (justo antes de perderlo).
         self.declare_parameter('target_cx_px', 160.0)
         self.declare_parameter('target_cy_px', 190.0)
-        self.declare_parameter('dock_tol_cx_px', 12.0)
+        self.declare_parameter('dock_tol_cx_px', 15.0)   # estricto: centra mejor el palet en X (~0.6cm @ dock)
         self.declare_parameter('dock_tol_cy_px', 15.0)
         # Ganancias DOCK
-        self.declare_parameter('dock_max_linear', 0.035) # m/s — lento para no pasarse del target
+        self.declare_parameter('dock_max_linear', 0.025) # m/s — muy lento; piso del dock ~0.02 (V_DEADBAND+0.005)
         self.declare_parameter('kp_v_dock_px', 0.0006)   # m/s por pixel de err_cy
-        self.declare_parameter('kp_w_dock_px', 0.0025)   # rad/s por pixel de err_cx
-        self.declare_parameter('w_max', 0.08)            # cap suave
+        # Centrado PD (P + D): el termino derivativo amortigua el sobrepaso que
+        # hacia "serpentear" el robot. kp mas suave que antes (era 0.0025) ahora
+        # que hay D. Tuning: sube kd para MAS amortiguacion (menos bamboleo),
+        # baja kp para un giro mas suave.
+        self.declare_parameter('kp_w_dock_px', 0.0022)   # rad/s por pixel de err_cx (P)
+        self.declare_parameter('kd_w_dock_px', 0.0011)   # rad/s por (px/s) de d(err_cx)/dt (D)
+        self.declare_parameter('w_max', 0.06)            # cap suave del giro
+        # Acopla el avance al rumbo: el robot SIGUE avanzando poco mientras corrige
+        # el giro, pero mas lento cuanto mas descentrado este (asi no bambolea en
+        # "S"). v se escala de 1 (centrado) hasta dock_align_v_min (NO a 0) cuando
+        # |err_cx| alcanza dock_align_gate_px.
+        self.declare_parameter('dock_align_gate_px', 70.0)
+        self.declare_parameter('dock_align_v_min', 0.5)   # fraccion minima de avance (1.0 = sin acople)
         # Ticks consecutivos centrados para confirmar DONE (a 10 Hz: 3 ~ 0.3s).
         self.declare_parameter('dock_done_stable_ticks', 3)
 
@@ -208,7 +219,13 @@ class QRQuadAlignmentNode(Node):
         self._v_dock_max    = float(self.get_parameter('dock_max_linear').value)
         self._kp_v_dock_px  = float(self.get_parameter('kp_v_dock_px').value)
         self._kp_w_dock_px  = float(self.get_parameter('kp_w_dock_px').value)
+        self._kd_w_dock_px  = float(self.get_parameter('kd_w_dock_px').value)
         self._w_max         = float(self.get_parameter('w_max').value)
+        self._dock_align_gate_px = float(self.get_parameter('dock_align_gate_px').value)
+        self._dock_align_v_min   = float(self.get_parameter('dock_align_v_min').value)
+        # Estado del derivativo del centrado (PD). None = primer tick (sin D).
+        self._dock_prev_err_cx: Optional[float] = None
+        self._dock_derr_ema: float = 0.0
         self._dock_stable_n = int(self.get_parameter('dock_done_stable_ticks').value)
         self._dock_target_dist = float(self.get_parameter('dock_target_dist').value)
         self._dock_dist_tol    = float(self.get_parameter('dock_dist_tol').value)
@@ -240,8 +257,15 @@ class QRQuadAlignmentNode(Node):
             marker_length=self._marker_length, refine=True, backend=backend,
         )
         self.get_logger().info(
-            f'Detector backend={self._detector.backend!r} marker={self._marker_length*1000:.1f}mm'
+            f'Detector backend={self._detector.backend!r} marker={self._marker_length*1000:.1f}mm '
+            f'| ZBar/pyzbar payload decoder: {"ON" if self._detector.pyzbar_available else "OFF"}'
         )
+        if not self._detector.pyzbar_available:
+            self.get_logger().warning(
+                'pyzbar NOT installed — cv2 often detects a QR but fails to decode '
+                'its text, so /qr_detected may never publish. Install it for reliable '
+                'reads: sudo apt install -y libzbar0 && pip install pyzbar'
+            )
 
         # ---- QoS ----
         if qos_name in ('reliable', 'default'):
@@ -561,6 +585,7 @@ class QRQuadAlignmentNode(Node):
                 search_dir = self._last_search_dir
             self._dock_stable_count = 0
             self._centered_count = 0
+            self._dock_prev_err_cx = None   # evita un pico de D al readquirir el QR
             self._publish_cmd(0.0, 0.12 * search_dir)
             return
 
@@ -598,22 +623,43 @@ class QRQuadAlignmentNode(Node):
         # ---- Comando combinado v + w ----
         self._dock_stable_count = 0
 
-        # v: solo si el eje de avance esta fuera de tolerancia
+        # v: solo si el eje de avance esta fuera de tolerancia, y ACOPLADO al
+        # rumbo. align=1 centrado, baja a 0 cuando |err_cx| llega al gate -> el
+        # robot "apunta antes de avanzar" en vez de avanzar bamboleando (la "S").
         if not fwd_in_tol:
             if self._dock_target_dist > 0.0:
                 v_raw = self._kp_v_dock_dist * dist_err      # proporcional a la distancia restante
             else:
                 v_raw = self._kp_v_dock_px * abs(err_cy)
-            v = _with_floor(v_raw, self._V_DEADBAND + 0.005, self._v_dock_max)
+            align = 1.0 - abs(err_cx) / max(1.0, self._dock_align_gate_px)
+            align = max(self._dock_align_v_min, min(1.0, align))   # nunca baja de v_min: siempre avanza un poco
+            v_raw *= align
+            # Solo aplicar el piso de stiction si de verdad queremos avanzar; si
+            # align lo dejo por debajo del deadband, v=0 (solo gira) sin que el
+            # piso lo vuelva a inflar.
+            v = (_with_floor(v_raw, self._V_DEADBAND + 0.005, self._v_dock_max)
+                 if v_raw >= self._V_DEADBAND else 0.0)
         else:
             v = 0.0
 
-        # w: solo si cx fuera de tolerancia (todavia tiene que centrar)
+        # w: centrado PD (proporcional + derivativo). El termino D amortigua el
+        # sobrepaso -> sin "serpenteo". Se quita el piso artificial: cerca del
+        # centro el giro debe poder DECAER suave a 0 (el piso lo mantenia en
+        # ~0.035 y causaba el bang-bang). El deadband de _publish_cmd corta lo
+        # residual. err_cx>0 -> QR a la derecha -> w<0.
         if not cx_in_tol:
-            w_raw = -self._kp_w_dock_px * err_cx
-            w = _with_floor(w_raw, self._W_DEADBAND + 0.005, self._w_max)
+            if self._dock_prev_err_cx is None:
+                derr = 0.0
+            else:
+                derr = (err_cx - self._dock_prev_err_cx) / self._control_dt
+            a_d = self._DERR_EMA_ALPHA
+            self._dock_derr_ema = a_d * derr + (1.0 - a_d) * self._dock_derr_ema
+            w_raw = -(self._kp_w_dock_px * err_cx + self._kd_w_dock_px * self._dock_derr_ema)
+            w = max(-self._w_max, min(self._w_max, w_raw))
         else:
             w = 0.0
+            self._dock_derr_ema = 0.0
+        self._dock_prev_err_cx = err_cx
 
         self._publish_cmd(v, w)
 
@@ -623,6 +669,7 @@ class QRQuadAlignmentNode(Node):
     _V_DEADBAND = 0.015
     _W_DEADBAND = 0.03
     _CMD_LPF_ALPHA = 0.40
+    _DERR_EMA_ALPHA = 0.30   # filtro del derivativo del centrado (PD)
 
     def _publish_cmd(self, v: float, w: float) -> None:
         if self._dry_run:
@@ -660,6 +707,8 @@ class QRQuadAlignmentNode(Node):
             return
         if new == State.DOCK:
             self._centered_count = 0   # fresh dock — don't carry over centering
+            self._dock_prev_err_cx = None   # PD: arranca sin pico de derivativo
+            self._dock_derr_ema = 0.0
         x_r, y_r, th_r = self._odom.pose()
         gs = (f' [odom=({x_r*1000:.0f},{y_r*1000:.0f},{math.degrees(th_r):+.0f})')
         if self._geom_latest is not None:

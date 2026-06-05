@@ -1,8 +1,9 @@
 """PICK — mission step 2: dock onto the pallet, then a timed pick maneuver.
 
 Sequence:
-    1. QR alignment (qr_quad_alignment docking) to centre on the pallet.
-    2. Set the lifter to ``entry_level`` (fork height to slide under the pallet).
+    1. Set the lifter to ``entry_level`` (fork height to slide under the
+       pallet) BEFORE docking, so the forks are staged before we centre.
+    2. QR alignment (qr_quad_alignment docking) to centre on the pallet.
     3. Creep forward, stopping by VISION (Electric-80 logo at target distance,
        /approach_stop/should_stop) before contact — with wheel stall + a
        ``forward_time`` time limit as safety fallbacks.
@@ -82,7 +83,24 @@ class Pick(DebuggableState):
     def run(self, blackboard: Blackboard) -> str:
         mission = bb_get(blackboard, "current_mission") or {}
 
-        # --- 1) align onto the pallet (QR docking) ---
+        # RELEASE_ONLY test: skip the whole pick maneuver and go straight to the
+        # truck-zone delivery (NAV_TO_TRUCK → RELEASE_LOAD) with the pretend QR.
+        if mission.get("release_only"):
+            logger.info("[PICK] release_only — skipping pick, going to NAV_TO_TRUCK.")
+            return "picked"
+
+        # --- 1) raise forks to the entry height BEFORE docking, so they are
+        #         already staged when we centre on the pallet ---
+        outcome = drive_lifter(
+            self._debug, blackboard, self._publish_lifter,
+            self._entry_level, self._lifter_timeout, tag="PICK entry",
+        )
+        if outcome == "stop":
+            return "stop"
+        if outcome == "timeout":
+            return "failed"
+
+        # --- 2) align onto the pallet (QR docking) ---
         if mission.get("skip_alignment"):
             logger.info("[PICK] skip_alignment=true — skipping docking.")
         else:
@@ -94,16 +112,6 @@ class Pick(DebuggableState):
                 return "stop"
             if outcome == "failed":
                 return "failed"
-
-        # --- 2) raise forks to the entry height (slide under the pallet) ---
-        outcome = drive_lifter(
-            self._debug, blackboard, self._publish_lifter,
-            self._entry_level, self._lifter_timeout, tag="PICK entry",
-        )
-        if outcome == "stop":
-            return "stop"
-        if outcome == "timeout":
-            return "failed"
 
         # --- 3) creep forward toward the pallet: stop by VISION (Electric-80
         #         logo at target distance) BEFORE touching the load, so the

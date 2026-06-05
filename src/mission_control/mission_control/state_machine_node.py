@@ -61,7 +61,7 @@ from mission_control.states.mission_done import MissionDone
 from mission_control.states.mission_failed import MissionFailed
 from mission_control.states.nav_to_truck import NavToTruck
 from mission_control.states.pick import Pick
-from mission_control.states.place import Place
+from mission_control.states.release_load import ReleaseLoad
 from mission_control.states.search import Search
 
 logger = logging.getLogger(__name__)
@@ -84,20 +84,44 @@ class StateMachineNode(Node):
         # ── Parameters ────────────────────────────────────────────────────
         self.declare_parameter("zones_file", "")
         self.declare_parameter("waypoints_file", "~/ros2_maps/waypoints.yaml")
-        self.declare_parameter("scan_qr_timeout", 4.0)
+        self.declare_parameter("scan_qr_timeout", 15.0)
         self.declare_parameter("alignment_timeout", 30.0)
         self.declare_parameter("lifter_timeout", 8.0)
         self.declare_parameter("debug_step_mode_default", False)
+        # ── NAV_TO_TRUCK (mission step 3) ──────────────────────────────────
+        # Where the robot drives after the pick: the truck-zone vantage point.
+        # For roller/rack→truck it goes to truck_1 (resolve_from_qr off, no
+        # explicit destination → falls back to truck_default_waypoint); RELEASE_LOAD
+        # then matches the logo and delivers. Flip truck_resolve_from_qr true to
+        # instead pick the truck directly from the pallet's QR (qr_aliases).
+        self.declare_parameter("truck_default_waypoint", "truck_1")
+        self.declare_parameter("truck_resolve_from_qr", False)
+        # ── RELEASE_LOAD (mission step 5) ──────────────────────────────────
+        # At the truck zone the robot sees the 3 trailer logos (logo_classifier
+        # → /logo_order, left→right). It oscillates in place, ACCUMULATING the
+        # per-frame 'x left of y' votes across the sweep so the full L→R order
+        # emerges even if no frame holds all 3 at once, maps order→[truck_2,
+        # truck_3,truck_4], matches the pallet's QR logo, drives there and lowers
+        # the lifter to release_level.
+        self.declare_parameter("logo_truck_waypoints", ["truck_2", "truck_3", "truck_4"])
+        self.declare_parameter("osc_angular_speed", 0.4)      # rad/s, in-place turn
+        self.declare_parameter("osc_sweep_start_deg", 12.0)   # first half-swing
+        self.declare_parameter("osc_sweep_step_deg", 8.0)     # widen each full swing
+        self.declare_parameter("osc_sweep_max_deg", 45.0)     # cap the swing
+        self.declare_parameter("osc_timeout", 40.0)           # give up scanning after
+        self.declare_parameter("logo_stable_frames", 3)       # confirming frames per left-of edge
+        self.declare_parameter("release_level", 0)            # lifter level at END of RELEASE_LOAD
         # ── PICK (timed open-loop maneuver) ────────────────────────────────
-        # After QR docking: lift to entry_level, drive forward forward_time s to
-        # slide the forks under the pallet, change to lift_level to take its
-        # weight, then reverse reverse_time s to pull it clear.
+        # BEFORE docking: lift to entry_level. Then QR-dock, drive forward
+        # forward_time s to slide the forks under the pallet, change to lift_level
+        # to take its weight, reverse reverse_time s to pull it clear, and finish
+        # at transport_level.
         self.declare_parameter("pick_approach_speed", 0.10)    # m/s forward & reverse
         self.declare_parameter("pick_forward_time", 5.0)       # s driving into the pallet
         self.declare_parameter("pick_reverse_time", 10.0)      # s backing out
-        self.declare_parameter("pick_entry_level", 1)          # fork height to enter
-        self.declare_parameter("pick_lift_level", 0)           # height to lift the pallet
-        self.declare_parameter("pick_transport_level", 1)      # lifter height after backing out
+        self.declare_parameter("pick_entry_level", 4)          # fork height BEFORE docking
+        self.declare_parameter("pick_lift_level", 5)           # height to lift the pallet
+        self.declare_parameter("pick_transport_level", 3)      # lifter height after backing out
         # Stall detection for the forward-into-pallet move: stop the instant the
         # wheels can't turn (robot blocked by the pallet) so the motor driver
         # isn't left drawing stall current. Stall = wheel speed (/wl,/wr rad/s)
@@ -148,6 +172,29 @@ class StateMachineNode(Node):
         alignment_timeout = float(self.get_parameter("alignment_timeout").value)
         lifter_timeout    = float(self.get_parameter("lifter_timeout").value)
         step_default      = bool(self.get_parameter("debug_step_mode_default").value)
+        truck_default_wp  = str(self.get_parameter("truck_default_waypoint").value)
+        truck_resolve_qr  = bool(self.get_parameter("truck_resolve_from_qr").value)
+        logo_truck_wps    = list(self.get_parameter("logo_truck_waypoints").value)
+        osc_angular_speed = float(self.get_parameter("osc_angular_speed").value)
+        osc_sweep_start   = float(self.get_parameter("osc_sweep_start_deg").value)
+        osc_sweep_step    = float(self.get_parameter("osc_sweep_step_deg").value)
+        osc_sweep_max     = float(self.get_parameter("osc_sweep_max_deg").value)
+        osc_timeout       = float(self.get_parameter("osc_timeout").value)
+        logo_stable_frames = int(self.get_parameter("logo_stable_frames").value)
+        release_level     = int(self.get_parameter("release_level").value)
+
+        # Fail loud-but-early: if the default truck isn't among the loaded truck
+        # waypoints, NAV_TO_TRUCK would otherwise die at runtime with an opaque
+        # nav_node "unknown waypoint" error. Only a warning (not fatal): the
+        # waypoint may be added to waypoints.yaml + reloaded later, and when
+        # truck_resolve_from_qr is on the QR alias may pick a different truck.
+        _trucks = self._zones.get("zones", {}).get("trucks", [])
+        if _trucks and truck_default_wp not in _trucks:
+            self.get_logger().warning(
+                f"truck_default_waypoint='{truck_default_wp}' is not among the loaded "
+                f"truck waypoints {_trucks}. NAV_TO_TRUCK will fail until it's added to "
+                f"waypoints.yaml (or set truck_default_waypoint to one of those)."
+            )
 
         import math as _math
         pick_approach_speed    = float(self.get_parameter("pick_approach_speed").value)
@@ -181,6 +228,11 @@ class StateMachineNode(Node):
         self.create_subscription(String, "/alignment_state",  self._cb_alignment_state, qos)
         self.create_subscription(Point,  "/alignment_error",  self._cb_alignment_error, qos)
         self.create_subscription(String, "/qr_detected",      self._cb_qr_detected,    qos)
+        # /logo_order: latest-wins detection at ~15 Hz. BEST_EFFORT so it's
+        # compatible regardless of logo_classifier's publisher reliability
+        # (a BEST_EFFORT sub accepts both reliable and best-effort publishers).
+        self.create_subscription(String, "/logo_order", self._cb_logo_order,
+                                 qos_profile_sensor_data)
         self.create_subscription(UInt8,  "/lifter_status",    self._cb_lifter_status,  qos)
         self.create_subscription(String, "/voice_command",    self._cb_voice,          qos)
         self.create_subscription(String, "/sm/control",       self._cb_sm_control,     qos)
@@ -221,6 +273,16 @@ class StateMachineNode(Node):
             pick_vision_stop=pick_vision_stop,
             pick_vision_fresh_s=pick_vision_fresh_s,
             pick_transport_level=pick_transport_level,
+            truck_default_wp=truck_default_wp,
+            truck_resolve_qr=truck_resolve_qr,
+            logo_truck_wps=logo_truck_wps,
+            osc_angular_speed=osc_angular_speed,
+            osc_sweep_start=osc_sweep_start,
+            osc_sweep_step=osc_sweep_step,
+            osc_sweep_max=osc_sweep_max,
+            osc_timeout=osc_timeout,
+            logo_stable_frames=logo_stable_frames,
+            release_level=release_level,
         )
         self._sm.set_start_state("IDLE")
 
@@ -244,6 +306,8 @@ class StateMachineNode(Node):
         bb["qr_value"]            = None
         bb["qr_detected"]         = None
         bb["qr_detected_at"]      = 0.0
+        bb["logo_order"]          = None    # latest left→right logos (/logo_order)
+        bb["logo_order_at"]       = 0.0
         bb["resolved_dest"]       = None
         bb["nav_status_prefix"]   = "IDLE"
         bb["nav_status_full"]     = "IDLE"
@@ -306,6 +370,21 @@ class StateMachineNode(Node):
 
     def _cb_lifter_status(self, msg: UInt8) -> None:
         self._blackboard["lifter_status"] = int(msg.data)
+
+    def _cb_logo_order(self, msg: String) -> None:
+        """Latest left→right logo order from perception/logo_classifier.
+
+        Stores the list plus a monotonic stamp so RELEASE_LOAD can require a
+        FRESH detection (a frozen value from a dead detector is ignored).
+        """
+        try:
+            payload = json.loads(msg.data)
+            order = payload.get("order") if isinstance(payload, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            return
+        if isinstance(order, list):
+            self._blackboard["logo_order"] = [str(x) for x in order]
+            self._blackboard["logo_order_at"] = time.monotonic()
 
     def _cb_scan(self, msg: LaserScan) -> None:
         """Min valid range in the front arc (base_link forward) for PICK approach.
@@ -394,7 +473,7 @@ class StateMachineNode(Node):
         self._pub_cmd.publish(m)
 
     def _publish_lifter(self, level: int) -> None:
-        m = UInt8(); m.data = max(0, min(7, int(level)))
+        m = UInt8(); m.data = max(0, min(5, int(level)))
         self._pub_lifter.publish(m)
 
     def _publish_alignment_start(self, start: bool) -> None:
@@ -434,6 +513,7 @@ class StateMachineNode(Node):
             "current_candidate":  bb.get("current_candidate"),
             "qr_detected":        bb.get("qr_detected"),
             "qr_value":           bb.get("qr_value"),
+            "logo_order":         bb.get("logo_order"),      # left→right truck logos
             "resolved_dest":      bb.get("resolved_dest"),
             "nav_status":         bb.get("nav_status_full"),
             "alignment_state":    bb.get("alignment_state"),
@@ -465,6 +545,16 @@ class StateMachineNode(Node):
         pick_vision_stop: bool,
         pick_vision_fresh_s: float,
         pick_transport_level: int,
+        truck_default_wp: str,
+        truck_resolve_qr: bool,
+        logo_truck_wps: list,
+        osc_angular_speed: float,
+        osc_sweep_start: float,
+        osc_sweep_step: float,
+        osc_sweep_max: float,
+        osc_timeout: float,
+        logo_stable_frames: int,
+        release_level: int,
     ) -> StateMachine:
         sm = StateMachine(outcomes=["finish"])
         kw = dict(
@@ -504,24 +594,32 @@ class StateMachineNode(Node):
                 "stop":   "MISSION_FAILED",
             },
         )
-        # STEP 3 — navega al camión según el QR (resolve inline + drive).
+        # STEP 3 — navega a la zona de camiones (default truck_1; QR-routing opt-in).
         sm.add_state(
             "NAV_TO_TRUCK",
-            NavToTruck(self._debug, self._publish_goal, self._zones, **kw),
+            NavToTruck(self._debug, self._publish_goal, self._zones,
+                       default_truck=truck_default_wp,
+                       resolve_from_qr=truck_resolve_qr, **kw),
             transitions={
-                "arrived": "PLACE",
+                # Reached the truck zone (truck_1 vantage) → match logos & deliver.
+                "arrived": "RELEASE_LOAD",
                 "failed":  "MISSION_FAILED",
                 "stop":    "MISSION_FAILED",
             },
         )
-        # STEP 4 — deja: lower the lifter to release the pallet.
+        # STEP 5 — release load: see the 3 truck logos, match the QR's company to
+        # its logo, drive to that truck and lower the lifter to drop the pallet.
         sm.add_state(
-            "PLACE",
-            Place(self._debug, self._publish_lifter, lifter_timeout, **kw),
+            "RELEASE_LOAD",
+            ReleaseLoad(self._debug, self._publish_goal, self._publish_cmd,
+                        self._publish_lifter, self._zones, logo_truck_wps,
+                        osc_angular_speed, osc_sweep_start, osc_sweep_step,
+                        osc_sweep_max, osc_timeout, logo_stable_frames,
+                        release_level, lifter_timeout, **kw),
             transitions={
-                "placed": "MISSION_DONE",
-                "failed": "MISSION_FAILED",
-                "stop":   "MISSION_FAILED",
+                "released": "MISSION_DONE",
+                "failed":   "MISSION_FAILED",
+                "stop":     "MISSION_FAILED",
             },
         )
         sm.add_state(

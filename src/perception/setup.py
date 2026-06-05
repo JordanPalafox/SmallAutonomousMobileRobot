@@ -25,7 +25,8 @@ setup(
         (
             os.path.join('share', package_name, 'config'),
             glob(os.path.join('config', '*.yaml'))
-            + glob(os.path.join('config', '*.png')),
+            + glob(os.path.join('config', '*.png'))
+            + glob(os.path.join('config', '*.pt')),
         ),
     ],
     install_requires=['setuptools'],
@@ -43,6 +44,7 @@ setup(
             'qr_quad_alignment = perception.qr_quad_alignment:main',
             'approach_stop_debug = perception.approach_stop_debug:main',
             'logo_stop_debug = perception.logo_stop_debug:main',
+            'logo_classifier = perception.logo_classifier:main',
         ],
     },
 )

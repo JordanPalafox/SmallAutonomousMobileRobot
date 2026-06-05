@@ -33,7 +33,7 @@ class JetsonGpioDriver(GpioDriver):
         """Drive 3-bit binary level to GPIO pins.
 
         Args:
-            level: Integer in [0, 7].  Values outside this range are
+            level: Integer in [0, 5].  Values outside this range are
                    clamped by the caller (LiftingNode) before arriving here.
         """
         GPIO = self._GPIO

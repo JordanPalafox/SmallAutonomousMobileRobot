@@ -9,6 +9,7 @@ duplicated each of these across two near-identical states).
 from __future__ import annotations
 
 import logging
+import math
 import time
 from typing import Callable
 
@@ -37,6 +38,13 @@ def navigate(
     blackboard["nav_status_prefix"] = "PLANNING"
     logger.info("[%s] → navigating to %s", tag, target)
     publish_goal(target)
+    # Set once nav is actively working the goal. After that, a drop back to IDLE
+    # means nav was cancelled out from under us (external stop, mode change, a
+    # stale timer) WITHOUT arriving — we must bail, not poll forever, because the
+    # velocity smoother holds nav's last command and would coast the robot on.
+    seen_active = False
+    active = ("FOLLOWING", "ALIGNING", "WALL_FOLLOWING", "RETURNING_LEAVE",
+              "WAITING_FOR_CLEAR")
     while True:
         if debug.aborted:
             publish_goal("stop")
@@ -51,6 +59,17 @@ def navigate(
             blackboard["mission_error_reason"] = (
                 f"navigation error at {target}: {bb_get(blackboard, 'nav_status_full')}"
             )
+            return "error"
+        if prefix in active:
+            seen_active = True
+        elif prefix == "IDLE" and seen_active:
+            # Cancelled mid-route. Halt the robot (the smoother would otherwise
+            # keep driving on nav's last command) and fail instead of hanging.
+            publish_goal("stop")
+            blackboard["mission_error_reason"] = (
+                f"navigation to {target} was cancelled (nav returned to IDLE mid-route)"
+            )
+            logger.error("[%s] %s", tag, blackboard["mission_error_reason"])
             return "error"
 
         time.sleep(POLL_INTERVAL)
@@ -69,7 +88,7 @@ def drive_lifter(
 
     Returns 'done' | 'timeout' | 'stop'.
     """
-    target = max(0, min(7, int(level)))
+    target = max(0, min(5, int(level)))
     logger.info("[%s] lifter → %d (timeout=%.1fs)", tag, target, timeout)
     publish_lifter(target)
     deadline = time.monotonic() + timeout
@@ -270,6 +289,94 @@ def drive_until_approach_stop(
         publish_cmd(0.0, 0.0)
 
 
+def oscillate_until(
+    debug: DebugContext,
+    blackboard: Blackboard,
+    publish_cmd: Callable[[float, float], None],
+    predicate: Callable[[Blackboard], bool],
+    *,
+    angular_speed: float,
+    sweep_start_deg: float,
+    sweep_step_deg: float,
+    sweep_max_deg: float,
+    timeout: float,
+    tag: str,
+    progress_fn: Callable[[Blackboard], bool] | None = None,
+) -> str:
+    """Rotate IN PLACE (no translation), sweeping the heading back and forth
+    with growing amplitude, until ``predicate(blackboard)`` is True.
+
+    Used by RELEASE_LOAD to find a viewpoint where all three truck logos are in
+    frame: from the arrival pose only two may be visible, so we turn a little
+    right, a little left, widening each swing (sweep_start → sweep_max in
+    sweep_step increments) until the logo detector reports all three.
+
+    The heading is integrated open-loop from the commanded angular speed (no
+    odometry feedback) — good enough to sweep the camera; the predicate is what
+    actually stops the motion, so heading drift only affects the search pattern,
+    not correctness. Linear velocity is always 0 (never advances/retreats).
+
+    ``timeout`` is a NO-PROGRESS WATCHDOG when ``progress_fn`` is given: each tick
+    that ``progress_fn(blackboard)`` is True (the search is still LEARNING — new
+    logos/votes arriving) resets the deadline, so a slow-but-progressing scan
+    isn't killed by a hard wall-clock cap. With no ``progress_fn`` it's a plain
+    cap. Either way ``timeout`` <= 0 means "no deadline" (oscillate until found).
+
+    Returns 'found' | 'timeout' | 'stop'. Always sends a zero command on exit.
+    """
+    t0 = time.monotonic()
+    no_deadline = timeout <= 0.0          # <=0 ⇒ oscillate until found / abort
+    deadline = None if no_deadline else t0 + timeout
+    w_mag = abs(float(angular_speed))
+    heading = 0.0                  # deg, open-loop estimate
+    amp = float(sweep_start_deg)
+    target = -amp                  # sweep to the right first
+    going_negative = True
+    last = t0
+    logger.info("[%s] oscillating in place (sweep %.0f→%.0f° @ %.2f rad/s, timeout=%s) until target seen",
+                tag, sweep_start_deg, sweep_max_deg, w_mag,
+                "none" if no_deadline else f"{timeout:.1f}s")
+    try:
+        while True:
+            if debug.aborted:
+                return "stop"
+            debug.wait_if_paused()
+
+            if predicate(blackboard):
+                logger.info("[%s] target acquired — stopping oscillation.", tag)
+                return "found"
+
+            now = time.monotonic()
+            # Watchdog: while the search keeps making progress, push the deadline
+            # out so a slow-but-working scan isn't cut off mid-resolve.
+            if (progress_fn is not None and deadline is not None
+                    and progress_fn(blackboard)):
+                deadline = now + timeout
+            if deadline is not None and now >= deadline:
+                logger.warning("[%s] oscillation timed out (no progress for %.1fs).",
+                               tag, timeout)
+                return "timeout"
+
+            dt = now - last
+            last = now
+            direction = 1.0 if (target - heading) > 0 else -1.0
+            w = direction * w_mag
+            publish_cmd(0.0, w)
+            heading += math.degrees(w * dt)   # integrate the angle increment (deg)
+            if abs(target - heading) <= 3.0:
+                # Reached this extreme: flip side; grow amplitude after a full swing.
+                if going_negative:
+                    target = +amp
+                    going_negative = False
+                else:
+                    amp = min(amp + sweep_step_deg, sweep_max_deg)
+                    target = -amp
+                    going_negative = True
+            time.sleep(POLL_INTERVAL)
+    finally:
+        publish_cmd(0.0, 0.0)
+
+
 def run_alignment(
     debug: DebugContext,
     blackboard: Blackboard,
@@ -285,8 +392,21 @@ def run_alignment(
     """
     blackboard["alignment_state"] = "IDLE"
     publish_align(True)
-    deadline = time.monotonic() + timeout
-    logger.info("[%s] alignment started (timeout=%.1fs)", tag, timeout)
+    # `timeout` is a NO-PROGRESS WATCHDOG, not a hard wall-clock cap. The old
+    # hard cap aborted a dock that was still converging — a SLOW-but-working
+    # dock hit 30 s and got kicked to MISSION_FAILED → IDLE. Here the deadline
+    # resets on any docking progress: a fresh QR decode (qr_detected_at advances
+    # — published every frame the QR is in view, incl. during DOCK) or an
+    # alignment-state change. So while the robot can see the QR it keeps docking
+    # no matter how slow. A generous absolute ceiling still guarantees we give up
+    # if it's genuinely stuck (QR lost / flickering forever without reaching DONE).
+    start = time.monotonic()
+    deadline = start + timeout
+    hard_deadline = start + max(3.0 * timeout, timeout + 30.0)
+    last_qr_at = bb_get(blackboard, "qr_detected_at", 0.0)
+    last_state = None
+    logger.info("[%s] alignment started (no-progress watchdog=%.1fs, ceiling=%.0fs)",
+                tag, timeout, hard_deadline - start)
     try:
         while True:
             if debug.aborted:
@@ -300,8 +420,21 @@ def run_alignment(
             if state == "LOST":
                 blackboard["mission_error_reason"] = "alignment LOST"
                 return "failed"
-            if time.monotonic() > deadline:
-                blackboard["mission_error_reason"] = "alignment timeout"
+
+            now = time.monotonic()
+            qr_at = bb_get(blackboard, "qr_detected_at", 0.0)
+            if qr_at != last_qr_at or state != last_state:
+                # Progress: QR still seen, or the dock advanced a stage. Stay.
+                last_qr_at = qr_at
+                last_state = state
+                deadline = now + timeout
+            if now > deadline or now > hard_deadline:
+                why = "no QR/progress" if now <= hard_deadline else "ceiling"
+                blackboard["mission_error_reason"] = (
+                    f"alignment stalled ({why}, state={state}, "
+                    f"{now - start:.0f}s elapsed)"
+                )
+                logger.error("[%s] %s", tag, blackboard["mission_error_reason"])
                 return "failed"
 
             time.sleep(POLL_INTERVAL)

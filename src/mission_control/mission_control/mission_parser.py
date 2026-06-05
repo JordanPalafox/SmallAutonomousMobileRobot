@@ -41,7 +41,7 @@ import yaml
 # the voice words "rollers" / "racks".
 MISSION_TYPES = (
     "ROLLER_TO_TRUCK", "RACK_TO_TRUCK", "CUSTOM", "PICK_ONLY",
-    "SEARCH_ROLLERS", "SEARCH_RACKS",
+    "SEARCH_ROLLERS", "SEARCH_RACKS", "RELEASE_ONLY",
 )
 
 # Lifter levels per zone class. Override per mission via pickup_level/place_level.
@@ -90,7 +90,28 @@ def load_zones(yaml_path: str) -> dict:
     if "qr_aliases" not in data:
         raise ValueError(f"{yaml_path}: missing required top-level 'qr_aliases'")
     data.setdefault("zones", {})
+    # QR-payload → logo class (amazon/pepsi/walmart) for RELEASE_LOAD. Optional.
+    data.setdefault("logo_aliases", {})
     return data
+
+
+def _norm_token(s: str) -> str:
+    """Upper-case, keep only A-Z0-9 — tolerant of case/spaces/punctuation/typos
+    in the QR payload vs the alias key (e.g. 'Popsi ' == 'POPSI')."""
+    return "".join(ch for ch in str(s).upper() if ch.isalnum())
+
+
+def resolve_logo_alias(zones_data: dict, qr_payload: str) -> Optional[str]:
+    """Map a decoded QR payload to a logo class via ``logo_aliases``.
+
+    Case/space/punctuation-insensitive (see ``_norm_token``). Returns the logo
+    class string (e.g. 'pepsi') or None if the payload isn't aliased.
+    """
+    if not qr_payload:
+        return None
+    aliases = zones_data.get("logo_aliases", {}) or {}
+    norm = {_norm_token(k): str(v).strip().lower() for k, v in aliases.items()}
+    return norm.get(_norm_token(qr_payload))
 
 
 def _all_waypoints(zones_data: dict) -> set[str]:
@@ -184,6 +205,9 @@ def parse_mission(json_str: str, zones_data: dict) -> Optional[dict]:
     if mtype == "PICK_ONLY":
         return _build_pick_only_mission(data, mid)
 
+    if mtype == "RELEASE_ONLY":
+        return _build_release_only_mission(data, mid)
+
     # CUSTOM
     return _build_custom_mission(data, all_wps, mid)
 
@@ -248,6 +272,7 @@ def _build_search_mission(
         "place_level":     place_level,
         "skip_alignment":  bool(data.get("skip_alignment", False)),
         "search_only":     search_only,
+        "place_after_nav": _coerce_bool(data.get("place_after_nav")),
     }
 
 
@@ -272,6 +297,30 @@ def _build_pick_only_mission(data: dict, mid: str) -> Optional[dict]:
         "place_level":     DEFAULT_PLACE_LEVEL_TRUCK,
         "skip_alignment":  bool(data.get("skip_alignment", False)),
         "pick_only":       True,
+    }
+
+
+def _build_release_only_mission(data: dict, mid: str) -> Optional[dict]:
+    """RELEASE_ONLY: test the truck-zone delivery in isolation.
+
+    Skips SEARCH and PICK and pretends a QR was already decoded (``qr``, default
+    "Popsi"). The SM then runs NAV_TO_TRUCK → RELEASE_LOAD: drive to the truck
+    vantage point, oscillate to read the 3 logos, match the pretend QR's company
+    to its logo, drive to that truck and lower the lifter. Lets you exercise
+    RELEASE_LOAD without picking a real pallet first.
+    """
+    qr = str(data.get("qr", "Popsi"))
+    return {
+        "id":              mid,
+        "type":            "RELEASE_ONLY",
+        "candidate_queue": deque(),       # unused (SEARCH is skipped)
+        "scan_qr":         False,
+        "destination":     None,          # resolved from the logo match in RELEASE_LOAD
+        "pickup_level":    DEFAULT_PICKUP_LEVELS["rollers"],
+        "place_level":     DEFAULT_PLACE_LEVEL_TRUCK,
+        "skip_alignment":  True,
+        "release_only":    True,
+        "qr":              qr,            # pretend QR injected as qr_value by SEARCH
     }
 
 
@@ -321,7 +370,18 @@ def _build_custom_mission(data: dict, all_wps: set[str], mid: str) -> Optional[d
         "pickup_level":    pickup_level,
         "place_level":     place_level,
         "skip_alignment":  bool(data.get("skip_alignment", False)),
+        "place_after_nav": _coerce_bool(data.get("place_after_nav")),
     }
+
+
+def _coerce_bool(value) -> Optional[bool]:
+    """Return the value only if it is a real bool, else None.
+
+    None means "the mission didn't specify — use the NAV_TO_TRUCK param default".
+    A non-bool (e.g. a stray string/number) is treated as unspecified rather
+    than silently truthy.
+    """
+    return value if isinstance(value, bool) else None
 
 
 def _coerce_level(value, default: int) -> Optional[int]:

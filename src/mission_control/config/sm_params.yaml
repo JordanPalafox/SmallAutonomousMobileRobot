@@ -4,9 +4,16 @@ state_machine_node:
     # installed under the mission_control share directory.
     zones_file: ""
 
-    # SCAN_QR: how long to wait for /qr_detected after arriving at a
-    # candidate before declaring the spot empty and moving to the next one.
-    scan_qr_timeout: 4.0
+    # SCAN_QR: per-candidate budget. At each roller SEARCH OSCILLATES in place
+    # (osc_* params below) watching /qr_detected; if no fresh QR decodes within
+    # this many seconds it gives up on that roller and drives to the NEXT one.
+    # QR decoding flickers with distance/angle/lighting and the parked pose is
+    # often a bad angle, so the sweep finds a decodable view; this is the time
+    # to allow per roller before moving on.
+    #   >0 ⇒ move to the next roller after this long (normal roller-by-roller).
+    #   <=0 ⇒ oscillate FOREVER at the candidate (never advances) — only for a
+    #         single spot you know holds the pallet.
+    scan_qr_timeout: 15.0
 
     # ALIGN_TO_PALLET: hard ceiling on how long we let qr_quad_alignment
     # run before considering alignment failed.
@@ -22,16 +29,52 @@ state_machine_node:
     # supervised first runs.
     debug_step_mode_default: false
 
+    # ── NAV_TO_TRUCK (mission step 3) ────────────────────────────────
+    # After the pick, where the robot drives. MISSION 1 = search rollers →
+    # pick → go to the truck zone, ending at the truck.
+    #
+    #   truck_default_waypoint : waypoint used when no per-QR routing applies.
+    #                            Mission 1 always lands here → truck_1.
+    #   truck_resolve_from_qr  : false ⇒ ignore the pallet QR and always go to
+    #                            truck_default_waypoint (the vantage point);
+    #                            RELEASE_LOAD then matches the logo and delivers.
+    #                            true  ⇒ pick the truck directly from the QR via
+    #                            qr_aliases (zones.yaml), default truck as fallback.
+    truck_default_waypoint: "truck_1"
+    truck_resolve_from_qr:  false
+
+    # ── RELEASE_LOAD (mission step 5) ────────────────────────────────
+    # At the truck zone the robot sees 3 trailer logos (logo_classifier →
+    # /logo_order, ordered left→right). From truck_1 it may only see 2, so it
+    # OSCILLATES in place (turns a little right, a little left, widening each
+    # swing) until one stable frame holds all 3 logos. That order maps
+    # positionally to logo_truck_waypoints; the pallet's QR company (via
+    # logo_aliases in zones.yaml) selects the matching truck; the robot drives
+    # there and lowers the lifter to release_level.
+    logo_truck_waypoints: ["truck_2", "truck_3", "truck_4"]  # left→right
+    osc_angular_speed:   0.4    # rad/s — in-place turn speed (no translation)
+    osc_sweep_start_deg: 12.0   # first half-swing amplitude
+    osc_sweep_step_deg:  8.0    # widen the swing by this each full oscillation
+    osc_sweep_max_deg:   45.0   # cap the swing amplitude
+    osc_timeout:         40.0   # s — give up scanning (→ MISSION_FAILED) after this
+    # The order is now ACCUMULATED across the sweep: each frame's left→right
+    # detections cast 'x is left of y' votes that chain transitively, so the
+    # camera need NOT see all 3 logos at once. This is the # of confirming
+    # frames each adjacency vote needs before it's trusted (noise rejection).
+    logo_stable_frames:  3      # confirming frames per left-of edge
+    release_level:       0      # lifter level at the END of RELEASE_LOAD (drop the pallet)
+
     # ── PICK (timed open-loop maneuver) ──────────────────────────────
-    # After QR docking: lift to entry_level, drive forward forward_time s to
-    # slide the forks under the pallet, change to lift_level to take its weight,
-    # then reverse reverse_time s to pull it clear.
+    # BEFORE docking: lift to entry_level so the forks are staged. Then QR-dock,
+    # drive forward forward_time s to slide the forks under the pallet, change to
+    # lift_level to take its weight, reverse reverse_time s to pull it clear, and
+    # finish at transport_level.
     pick_approach_speed:  0.04    # m/s — slow CREEP into the pallet (no slam, no wheel slip)
     pick_forward_time:    9.0     # s max (creep is slow; the stall guard ends it on contact)
     pick_reverse_time:    5.0     # s backing out with the pallet
-    pick_entry_level:     1       # fork height to slide under the pallet
-    pick_lift_level:      0       # height to lift the pallet (per hardware: 0 = lift)
-    pick_transport_level: 1       # lifter height after backing out (carry) → ends PICK
+    pick_entry_level:     4       # fork height BEFORE docking (slide under the pallet)
+    pick_lift_level:      5       # height to lift the pallet (after advancing)
+    pick_transport_level: 3       # lifter height after backing out (carry) → ends PICK
     # Stall detection on the forward move: stop the instant the wheels can't turn
     # (blocked by the pallet) so the driver doesn't draw stall current. Wheel
     # speed from /wl,/wr (rad/s); at 0.10 m/s the wheels spin ~2 rad/s.

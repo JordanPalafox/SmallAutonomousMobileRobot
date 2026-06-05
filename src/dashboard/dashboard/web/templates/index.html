@@ -48,6 +48,13 @@
           <span class="map-source-badge static hidden" id="mapSourceBadge">STATIC</span>
         </div>
 
+        <!-- Zoom controls (top-right) -->
+        <div class="map-zoom-controls">
+          <button class="map-btn map-zoom-btn" id="btnZoomIn"    type="button" title="Acercar (rueda del mouse)">+</button>
+          <button class="map-btn map-zoom-btn" id="btnZoomOut"   type="button" title="Alejar (rueda del mouse)">&minus;</button>
+          <button class="map-btn map-zoom-btn" id="btnZoomReset" type="button" title="Restablecer vista (doble clic)">&#10227;</button>
+        </div>
+
         <!-- Legend overlay (bottom-left) -->
         <div class="map-legend">
           <div class="legend-item">
@@ -90,6 +97,10 @@
           <span class="tele-val mono" id="smCurrentCandidate">—</span>
           <span class="tele-label">QR</span>
           <span class="tele-val mono accent" id="smQrValue">—</span>
+          <span class="tele-label" title="String decodificado en vivo desde /qr_detected (percepción), independiente del SM">QR live</span>
+          <span class="tele-val mono accent" id="qrLive">—</span>
+          <span class="tele-label" title="Logos detectados izquierda→derecha (/logo_order) → truck_2/3/4">Logos</span>
+          <span class="tele-val mono accent" id="smLogoOrder">—</span>
           <span class="tele-label">Dest</span>
           <span class="tele-val mono" id="smResolvedDest">—</span>
           <span class="tele-label">X</span>
@@ -119,7 +130,7 @@
         </div>
       </section>
 
-      <!-- ---- LIFTER (4 levels, click to set) ---- -->
+      <!-- ---- LIFTER (6 levels 0-5, click to set) ---- -->
       <section class="card">
         <h2 class="card-title">Lifter</h2>
         <div class="lifter-btn-row" id="lifterButtons"></div>
@@ -130,9 +141,10 @@
       <section class="card">
         <h2 class="card-title">Control</h2>
         <div class="quick-control">
-          <button class="quick-btn" id="btnMissionRollers" type="button">&#128269; Buscar en rollers</button>
-          <button class="quick-btn" id="btnMissionRacks" type="button">&#128269; Buscar en racks</button>
+          <button class="quick-btn" id="btnMissionRollers" type="button" title="Buscar pallet con QR en los rollers, recogerlo y llevarlo al camión">&#128666; Misión 1: Rollers &rarr; Camión</button>
+          <button class="quick-btn" id="btnMissionRacks" type="button" title="Buscar pallet con QR en los racks, recogerlo y llevarlo al camión">&#128666; Racks &rarr; Camión</button>
           <button class="quick-btn" id="btnMissionPick" type="button">&#128230; Pick pallet (aquí)</button>
+          <button class="quick-btn" id="btnMissionRelease" type="button" title="Prueba la entrega en el camión: simula QR=Popsi, va al camión, lee los 3 logos y suelta en el que coincide (pepsi)">&#128228; Release en camión (QR=Popsi)</button>
           <button class="quick-btn quick-btn-stop" id="btnMissionAbort" type="button">&#9632; Abort</button>
         </div>
       </section>

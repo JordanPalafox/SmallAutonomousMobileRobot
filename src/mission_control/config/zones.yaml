@@ -18,3 +18,18 @@ qr_aliases:
   MERCADONA: truck_1
   DHL:       truck_2
   COCACOLA:  truck_3
+
+# Decoded QR payload → company LOGO class, for RELEASE_LOAD. The logo_classifier
+# (YOLO) recognises three classes: amazon / pepsi / walmart. The QR on a pallet
+# encodes the company (sometimes mis-spelled, e.g. "Popsi", "Emezon"); RELEASE_LOAD
+# normalises it to one of those classes and then delivers to whichever truck the
+# logo_classifier saw that logo on (truck_2/3/4, left→right). Matching is
+# case/space/punctuation-insensitive, so list a few spelling variants per class.
+logo_aliases:
+  POPSI:    pepsi
+  PEPSI:    pepsi
+  EMEZON:   amazon
+  AMAZON:   amazon
+  WALMART:  walmart
+  WALMAR:   walmart
+  WALLMART: walmart

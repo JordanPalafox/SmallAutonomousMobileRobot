@@ -56,11 +56,27 @@ nav_node:
     angular_max: 0.21
 
     # Distance (m) to declare the final goal reached.
-    # Tightened from 0.20 → 0.08 so waypoints are docked precisely.
-    # The pure-pursuit controller already scales speed by min(1, dist/0.5)
-    # so it creeps in slowly under 0.5 m, and reverse-maneuver is enabled
-    # (allow_reverse=true) to correct overshoot, so 8 cm is achievable.
-    goal_tolerance: 0.08
+    # Tightened 0.08 → 0.04 so the robot docks within ~4 cm of the saved
+    # waypoint instead of ~8 cm (less pose error per the requirement).
+    # The pure-pursuit controller scales speed by min(1, dist/0.5) so it
+    # creeps in slowly under 0.5 m, and reverse-maneuver corrects overshoot
+    # (allow_reverse=true).  Reachable ONLY because approach_speed_min (below)
+    # floors the final creep above the motor deadband — without that floor the
+    # scaled speed decays to a few mm/s just outside a tolerance this tight and
+    # the robot stalls cm short.  Push toward 0.03 only if /slam_pose is steady
+    # at the dock (if pose jitter > tol, arrival flaps — steer on
+    # pose_source:=tf first).
+    goal_tolerance: 0.03
+
+    # Minimum forward speed (m/s) for the final creep to the goal.  The
+    # distance term above decays the commanded speed to a few mm/s just
+    # outside goal_tolerance, which is under the H-bridge/motor deadband, so a
+    # tight goal_tolerance would never actually be reached.  When the robot is
+    # still outside tolerance AND pointed at the goal, the nav node floors the
+    # speed to this value so the last few cm close.  0.04 m/s matches the
+    # known-good PICK creep speed (it produces motion through the smoother).
+    # Set 0.0 to disable the floor (reverts to pure distance-scaled creep).
+    approach_speed_min: 0.04
 
     # Lookahead distance for pure-pursuit (m).  Raised 0.40 → 0.50: the
     # robot's minimum turning radius under the angular cap is v/ωmax =
@@ -77,9 +93,17 @@ nav_node:
     # Control loop rate (Hz)
     control_rate: 10.0
 
-    # Heading alignment at goal.  Tightened 0.12 → 0.08 rad (~4.6°) so
-    # the dock pose matches the saved waypoint heading more precisely.
-    heading_tolerance: 0.08   # rad
+    # Heading alignment at goal.  Tightened 0.08 → 0.05 rad (~2.9°) so the
+    # dock heading matches the saved waypoint more precisely (less pose
+    # error).  Reachable because align_speed_min keeps the in-place rotation
+    # above the rotational deadband so it doesn't stall just outside tol.
+    heading_tolerance: 0.04   # rad
+
+    # Minimum in-place rotation speed (rad/s) during heading alignment at the
+    # goal.  Mirrors approach_speed_min but for yaw: a tight heading_tolerance
+    # is only reachable if the rotation stays above the rotational deadband
+    # instead of decaying with the proportional term.  Was hard-coded 0.15.
+    align_speed_min: 0.15
 
     # Bug1 obstacle avoidance
     obstacle_distance: 0.50   # front-arc stop threshold (m) — wider for thin legs

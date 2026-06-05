@@ -24,7 +24,7 @@ class MockGpioDriver(GpioDriver):
         """Log the requested level in decimal and binary.
 
         Args:
-            level: Integer in [0, 7].
+            level: Integer in [0, 5].
         """
         self._current_level = level
         logger.info('Lifter level: %d  (binary: %s)', level, format(level, '03b'))

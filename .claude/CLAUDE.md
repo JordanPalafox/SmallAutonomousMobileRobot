@@ -18,22 +18,22 @@ No usar Nav2. Toda la navegación, SLAM y control es implementación propia.
 |---|---|
 | Computadora | Jetson Nano 4GB |
 | GPIO library | `Jetson.GPIO` |
-| FPGA lifter | 3 pines GPIO → 8 niveles de altura (encoding binario 000–111) |
+| FPGA lifter | 3 pines GPIO → 6 niveles de altura 0–5 (encoding binario 000–101) |
 | Sensores | LiDAR (`/scan`), Cámara (`/cam_img`), Encoders (`/VelocityEncR`, `/VelocityEncL`) |
 | Actuadores | Motores DC vía H-bridge (`/cmd_vel`) |
 | Detección pallets | Solo color/forma (sin QR ni Aruco en pallets) |
 
 ### Encoding del lifter (3 bits → GPIO Jetson → FPGA)
 
+El FPGA mapea cada nivel a un ángulo de servo:
+
 ```
-000 = Nivel 0 (piso / transporte)
-001 = Nivel 1
-010 = Nivel 2
-011 = Nivel 3 (pick pallet inferior)
-100 = Nivel 4
-101 = Nivel 5 (pick pallet rack nivel 2)
-110 = Nivel 6
-111 = Nivel 7 (altura máxima)
+000 = Nivel 0 → 95°  (piso / transporte)
+001 = Nivel 1 → 70°
+010 = Nivel 2 → 65°
+011 = Nivel 3 → 40°  (pick pallet inferior)
+100 = Nivel 4 → 25°
+101 = Nivel 5 →  0°  (pick pallet rack nivel 2 / altura máxima)
 ```
 
 ---
@@ -74,7 +74,7 @@ No usar Nav2. Toda la navegación, SLAM y control es implementación propia.
 | `/map` | `OccupancyGrid` | ← SLAM | Mapa 2D del entorno |
 | `/mission` | `String` (JSON) | ← web/voz | Misión actual `{source, dest, pallet_id}` |
 | `/robot_state` | `String` | publicado por SM | Estado actual de la máquina de estados |
-| `/lifter_level` | `UInt8` | → lifter node | Nivel 0–7 del lifter |
+| `/lifter_level` | `UInt8` | → lifter node | Nivel 0–5 del lifter |
 | `/alignment_error` | `Point` | ← visión | Error de alineación en píxeles (x, y) |
 | `/voice_command` | `String` | ← voice node | Comando reconocido |
 | `/aruco_poses` | `PoseArray` | ← visión | Poses de markers Aruco detectados |

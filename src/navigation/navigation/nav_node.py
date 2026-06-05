@@ -118,6 +118,18 @@ class NavNode(Node):
         self.declare_parameter('obstacle_angle_deg',  55.0)   # half-angle of front arc (deg)
         self.declare_parameter('wall_follow_dist',    0.45)   # target wall distance (m)
         self.declare_parameter('heading_tolerance',   0.12)   # rad (~7°)
+        # Minimum forward speed (m/s) for the final creep to a goal.  The
+        # pure-pursuit speed scales with distance (min(1, dist/0.5)) and decays
+        # to a few mm/s near the goal — below the motor deadband — so a TIGHT
+        # goal_tolerance would never be reached (the robot stalls cm short).
+        # When the robot is aimed at the goal and the scaled speed drops under
+        # this floor, we command this instead so the last few cm close.  0
+        # disables the floor.
+        self.declare_parameter('approach_speed_min',  0.04)
+        # Minimum in-place rotation speed (rad/s) during heading alignment at
+        # the goal, so a TIGHT heading_tolerance is reachable instead of
+        # stalling in the rotational deadband.  Was hard-coded 0.15.
+        self.declare_parameter('align_speed_min',     0.15)
         # Robot body frame the scan angles must be expressed in.  The LiDAR
         # is mounted rotated relative to base_link (0 in sim, π rear-mount on
         # the real robot — see URDF lidar_yaw).  We resolve base_frame→scan
@@ -543,6 +555,13 @@ class NavNode(Node):
 
         self.get_logger().info(f'Goal received: "{name}" → ({goal_x:.2f}, {goal_y:.2f})')
 
+        # A new goal supersedes any pending post-arrival → IDLE timer from the
+        # PREVIOUS goal. Without this, arriving at goal A then receiving goal B
+        # within the 1 s arrived-timeout window lets A's stale timeout fire while
+        # we're FOLLOWING B — yanking us back to IDLE mid-route (path cleared,
+        # robot coasts on the smoother's last command into a crash).
+        self._cancel_arrived_timer()
+
         if self._pose_x is None:
             self.get_logger().error('No pose available yet — cannot plan.')
             self._publish_status('ERROR: no pose')
@@ -779,6 +798,23 @@ class NavNode(Node):
 
         omega = self._clamp(kp * ctrl_error + kd * self._d_filt, -wmax, wmax)
         speed_mag = vmax * max(0.0, math.cos(ctrl_error)) * min(1.0, dist_to_goal / 0.5)
+
+        # ── Final-approach speed floor ─────────────────────────────────
+        # The distance term (min(1, dist/0.5)) decays speed_mag to a few mm/s
+        # just outside goal_tolerance — under the motor deadband, so a tight
+        # tolerance would stall cm short and never trigger arrival.  When the
+        # robot is still outside tolerance (arrival is checked at the top of
+        # the loop) AND pointed at the goal (so the floor drives it TOWARD the
+        # goal, not sideways into a wall), raise the magnitude to
+        # approach_speed_min.  Applies symmetrically to a reverse overshoot-
+        # correction: `sign` carries the direction and the small |ctrl_error|
+        # gate holds in both regimes (ctrl_error ≈ 0 when backing straight in).
+        approach_min = self.get_parameter('approach_speed_min').value
+        if (approach_min > 0.0
+                and abs(ctrl_error) < math.radians(20.0)
+                and 0.0 < speed_mag < approach_min):
+            speed_mag = approach_min
+
         speed = sign * speed_mag
 
         cmd = Twist()
@@ -1421,9 +1457,10 @@ class NavNode(Node):
         wmax = self.get_parameter('angular_max').value
         omega = self._clamp(kp * heading_error, -wmax, wmax)
 
-        # Ensure minimum angular speed so the robot doesn't stall near tolerance.
-        min_omega = 0.15
-        if abs(omega) < min_omega:
+        # Ensure minimum angular speed so the robot doesn't stall just outside
+        # the (now tighter) tolerance in the rotational deadband.
+        min_omega = self.get_parameter('align_speed_min').value
+        if min_omega > 0.0 and abs(omega) < min_omega:
             omega = math.copysign(min_omega, omega)
 
         cmd = Twist()
@@ -1440,15 +1477,25 @@ class NavNode(Node):
         self.get_logger().info(f'Arrived at "{name}" with correct heading.')
         self._arrived_timer = self.create_timer(1.0, self._arrived_timeout)
 
-    def _arrived_timeout(self) -> None:
+    def _cancel_arrived_timer(self) -> None:
+        """Cancel a pending post-arrival → IDLE one-shot timer, if any.
+
+        Called whenever a NEW goal is accepted or navigation is cancelled, so a
+        stale arrived-timeout from the PREVIOUS goal can't fire while we're
+        FOLLOWING the next one and force the node back to IDLE mid-route.
+        """
         if self._arrived_timer is not None:
             self._arrived_timer.cancel()
             self._arrived_timer = None
+
+    def _arrived_timeout(self) -> None:
+        self._cancel_arrived_timer()
         self._path = []
         self._state = _State.IDLE
         self._publish_status('IDLE')
 
     def _cancel_navigation(self) -> None:
+        self._cancel_arrived_timer()
         self._publish_stop()
         self._path = []
         self._state = _State.IDLE

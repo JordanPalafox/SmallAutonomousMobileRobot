@@ -11,6 +11,7 @@ import json
 import os
 import struct
 import threading
+import time
 import zlib
 from dataclasses import dataclass, field
 from typing import Optional
@@ -35,6 +36,11 @@ class RobotState:
     scan: Optional[dict] = None
     nav_plan: Optional[list] = None
     system_mode: str = "NAVIGATION"
+    # Last QR string decoded by perception (raw /qr_detected), independent of
+    # the SM, so the dashboard shows the decoded value even with no mission
+    # running. qr_stamp is a monotonic timestamp for staleness display.
+    qr: Optional[str] = None
+    qr_stamp: float = 0.0
 
 
 class RosBridge:
@@ -93,6 +99,12 @@ class RosBridge:
         )
         self._node.create_subscription(
             String, "/mission", self._cb_mission, reliable_qos
+        )
+        # Raw decoded QR string from perception (qr_quad_alignment). Shown live
+        # in the dashboard so you can confirm the QR is actually DECODED (not
+        # just its box detected) before/independent of any mission.
+        self._node.create_subscription(
+            String, "/qr_detected", self._cb_qr_detected, reliable_qos
         )
         self._node.create_subscription(
             Twist, "/cmd_vel", self._cb_vel, best_effort_qos
@@ -237,11 +249,11 @@ class RosBridge:
         self._voice_pub.publish(msg)
 
     def publish_lifter_level(self, level: int) -> None:
-        """Publish a target lifter level to /lifter_level (clamped 0-7; the
+        """Publish a target lifter level to /lifter_level (clamped 0-5; the
         lifting node further clamps to the active HAL's range)."""
         from std_msgs.msg import UInt8
         msg = UInt8()
-        msg.data = max(0, min(7, int(level)))
+        msg.data = max(0, min(5, int(level)))
         self._lifter_pub.publish(msg)
 
     def get_sm_snapshot(self) -> Optional[dict]:
@@ -282,22 +294,28 @@ class RosBridge:
 
         The name follows the ``<type>_<n>`` convention (roller_1, rack_2,
         truck_3) that the rest of the stack already keys off (map colours,
-        zone classification). The next index is computed under the lock so two
-        near-simultaneous saves can't pick the same name. Only geometry
-        (x, y, theta) is persisted — the type stays encoded in the name prefix,
-        keeping waypoints.yaml compatible with nav_node's loader.
+        zone classification). The index is the lowest positive integer not
+        already in use for this type, so deleting truck_1 and adding a new
+        truck reuses index 1 instead of jumping past the highest. It's computed
+        under the lock so two near-simultaneous saves can't pick the same name.
+        Only geometry (x, y, theta) is persisted — the type stays encoded in
+        the name prefix, keeping waypoints.yaml compatible with nav_node's
+        loader.
 
         Returns the assigned waypoint name.
         """
         import re
         with self._lock:
             pattern = re.compile(rf"^{re.escape(wtype)}_(\d+)$")
-            max_n = 0
+            used = set()
             for key in self._waypoints:
                 m = pattern.match(key)
                 if m:
-                    max_n = max(max_n, int(m.group(1)))
-            name = f"{wtype}_{max_n + 1}"
+                    used.add(int(m.group(1)))
+            n = 1
+            while n in used:
+                n += 1
+            name = f"{wtype}_{n}"
         self.add_waypoint(name, x, y, theta)
         return name
 
@@ -420,6 +438,14 @@ class RosBridge:
     def _cb_robot_state(self, msg) -> None:
         with self._lock:
             self._state.state = msg.data
+
+    def _cb_qr_detected(self, msg) -> None:
+        payload = (msg.data or "").strip()
+        if not payload:
+            return
+        with self._lock:
+            self._state.qr = payload
+            self._state.qr_stamp = time.monotonic()
 
     def _cb_sm_blackboard(self, msg) -> None:
         try:

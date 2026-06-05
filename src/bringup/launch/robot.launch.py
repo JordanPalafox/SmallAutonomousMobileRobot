@@ -24,7 +24,7 @@ Runs here, on the robot:
                           save → relaunch needs no scp). Lives here, NOT on the
                           laptop (one node owns the /map_saver service).
   lifting_node          — FPGA lifter control over SPI (Tang Nano 20K on
-                          /dev/spidev0.0). Subscribes /lifter_level (UInt8 0-3).
+                          /dev/spidev0.0). Subscribes /lifter_level (UInt8 0-5).
                           Must run on the Jetson — it owns the SPI hardware.
 
 The LiDAR driver is NOT started here — it already runs as its own node,
