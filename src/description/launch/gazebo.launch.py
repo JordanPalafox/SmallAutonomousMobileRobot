@@ -49,6 +49,14 @@ def generate_launch_description():
                     "ni controladores).",
     )
 
+    spawn_rsp_arg = DeclareLaunchArgument(
+        name="spawn_rsp",
+        default_value="true",
+        description="false = NO levantar robot_state_publisher/joint_state_publisher "
+                    "aquí (los provee quien incluye este launch, p.ej. laptop.launch.py). "
+                    "Se spawnea desde el /robot_description externo.",
+    )
+
     world_path = PathJoinSubstitution([
         puzzlebot_description,
         "worlds",
@@ -92,7 +100,8 @@ def generate_launch_description():
         parameters=[{
             "robot_description": robot_description,
             "use_sim_time": True
-        }]
+        }],
+        condition=IfCondition(LaunchConfiguration("spawn_rsp")),
     )
 
     ign_exec = shutil.which("ign") or "ign"
@@ -207,6 +216,7 @@ def generate_launch_description():
     # available for visualization even when the controller_manager is broken.
     joint_state_publisher_node = TimerAction(
         period=8.0,
+        condition=IfCondition(LaunchConfiguration("spawn_rsp")),
         actions=[Node(
             package="joint_state_publisher",
             executable="joint_state_publisher",
@@ -272,6 +282,7 @@ def generate_launch_description():
         model_arg,
         world_name_arg,
         mirror_arg,
+        spawn_rsp_arg,
         gz_resource_path,
         ign_resource_path,
         # NOTE: gl_software (LIBGL_ALWAYS_SOFTWARE=1) is intentionally NOT added

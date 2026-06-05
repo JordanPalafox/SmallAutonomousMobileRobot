@@ -43,8 +43,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -63,8 +64,12 @@ def generate_launch_description():
     rviz_cfg_path    = os.path.join(pkg_slam, 'config', 'slam.rviz')
     urdf_path        = os.path.join(pkg_desc, 'urdf', 'puzzlebot_with_lifter.urdf.xacro')
 
+    # use_gz_control:=false → URDF SIN el plugin ros2_control. Sirve igual para
+    # RViz (los tags <gazebo> los ignora) Y permite spawnear este mismo
+    # /robot_description en el gemelo de Gazebo sin que el plugin crashee.
     robot_description = ParameterValue(
-        Command(['xacro ', urdf_path, ' is_sim:=false is_ignition:=false']),
+        Command(['xacro ', urdf_path,
+                 ' is_sim:=false is_ignition:=false use_gz_control:=false']),
         value_type=str)
 
     map_yaml_default       = os.path.expanduser('~/ros2_maps/warehouse.yaml')
@@ -100,8 +105,29 @@ def generate_launch_description():
                     'Set 0.0 for legacy pixel-cy mode. Read the live "d=..mm" in '
                     'the dashboard QR feed to retune.')
 
+    gemelo_arg = DeclareLaunchArgument(
+        'gemelo', default_value='false',
+        description='Lanza el gemelo de Gazebo como visualizador-espejo en vivo: '
+                    'un robot virtual que SIGUE /slam_pose del robot real dentro '
+                    'del almacén 3D con los arucos. Pesado (Gazebo + Ogre2).')
+
     start_mode = LaunchConfiguration('start_mode')
     map_yaml   = LaunchConfiguration('map_yaml')
+
+    # ── Gemelo-espejo (Gazebo) ────────────────────────────────────────
+    # Reusa gazebo.launch.py en modo mirror: spawnea un robot SOLO-VISUAL desde
+    # el /robot_description de ESTE launch (por eso spawn_rsp:=false) y corre
+    # gemelo_mirror, que copia /slam_pose del robot real a la pose del modelo.
+    gemelo_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_desc, 'launch', 'gazebo.launch.py')),
+        launch_arguments={
+            'world_name': 'almacen_racks',
+            'mirror':     'true',
+            'spawn_rsp':  'false',
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('gemelo')),
+    )
 
     # ── Navigation ────────────────────────────────────────────────────
     nav_node = Node(
@@ -197,6 +223,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         start_mode_arg, map_yaml_arg, rviz_arg, qr_arg, qr_dry_run_arg, qr_dock_dist_arg,
+        gemelo_arg,
         robot_state_publisher,
         joint_state_publisher,
         map_odom_relay,
@@ -206,4 +233,5 @@ def generate_launch_description():
         qr_node,
         voice_node,
         rviz_node,
+        gemelo_launch,
     ])
