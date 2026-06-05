@@ -130,6 +130,12 @@ def generate_launch_description():
     # start from a fresh display.  (:99 is private to this sim, so this is safe.)
     xvfb = ExecuteProcess(
         cmd=["bash", "-c",
+             # Mata cualquier Xvfb :99 ZOMBI de un run anterior antes de limpiar
+             # el lock. Si un Xvfb sigue corriendo en :99, borrar el lock no basta:
+             # el nuevo no puede tomar el display, el render de Gazebo se cuelga en
+             # "Sensors.cc: Waiting for init", el sim se ve atorado y al hacer Ctrl+C
+             # el plugin ros2_control aborta el server (carrera de shutdown).
+             "pkill -9 -f 'Xvfb :99' 2>/dev/null; sleep 0.3; "
              "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null; "
              "exec Xvfb :99 -screen 0 1280x1024x24"],
         output="screen",
