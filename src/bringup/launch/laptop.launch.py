@@ -85,21 +85,23 @@ def generate_launch_description():
         'rviz', default_value='true',
         description='Launch RViz2 with the SLAM config.')
     qr_arg = DeclareLaunchArgument(
-        'qr', default_value='false',
-        description='Launch qr_quad_alignment HERE on the laptop. Default false: '
-                    'it now runs on the Jetson (robot.launch.py) so the docking '
-                    'control loop reads the camera locally with no WiFi lag. Set '
-                    'true only to fall back to laptop-side docking.')
+        'qr', default_value='true',
+        description='Launch qr_quad_alignment HERE on the laptop (default true). '
+                    'Moved off the Jetson: the QR detection at 640x360 pegged a '
+                    'whole core on the 2 GB Nano (~105%) and saturated it, so it '
+                    'runs on the laptop now. Trade-off: the docking control loop '
+                    'reads the camera + cmd over WiFi (some lag). Set qr:=false on '
+                    'the Jetson side (robot.launch.py) so only ONE runs.')
     qr_dry_run_arg = DeclareLaunchArgument(
         'qr_dry_run', default_value='false',
         description='Run qr_quad_alignment WITHOUT driving /cmd_vel_in '
                     '(search-only testing; PICK docking needs false).')
     qr_dock_dist_arg = DeclareLaunchArgument(
-        'qr_dock_dist', default_value='0.33',
-        description='DOCK stop distance to the QR in metres (height-agnostic). '
-                    'Calibrated 2026-06-03 at the ideal dock pose: dist_qr=330mm. '
-                    'Set 0.0 for legacy pixel-cy mode. Read the live "d=..mm" in '
-                    'the dashboard QR feed to retune.')
+        'qr_dock_dist', default_value='0.28',
+        description='ROLLER DOCK stop distance to the QR (m, height-agnostic). '
+                    'Calibrated 2026-06-04 (QR "Popsi", 640x360): dist_qr=280mm. '
+                    '(Rack uses rack_dock_target_dist=0.36 via /robot_state.) '
+                    'Set 0.0 for legacy pixel-cy mode; read live "d=..mm" to retune.')
     logos_arg = DeclareLaunchArgument(
         'logos', default_value='true',
         description='Launch logo_classifier (YOLO) here. Publishes /logo_order '
@@ -162,9 +164,20 @@ def generate_launch_description():
             'show_window':         False,
             'publish_debug_image': True,
             'dock_target_dist':    ParameterValue(LaunchConfiguration('qr_dock_dist'), value_type=float),
-            # Calibrated at the ideal dock pose (QR right-of-centre at ideal).
-            'target_cx_px':        173.0,
-            'target_cy_px':        187.0,
+            # Roller (default) dock target — calibrated 2026-06-04 (QR "Popsi", 640x360).
+            'target_cx_px':        325.6,
+            'target_cy_px':        245.9,
+            # RACK dock profile (mission 2: PICK_FROM_RACK), swapped by /robot_state.
+            # MUST match robot.launch.py — this node now runs HERE (laptop), not on
+            # the Jetson, to keep the 2 GB Nano from saturating.
+            'rack_target_cx_px':     326.8,
+            'rack_target_cy_px':     240.4,
+            'rack_dock_target_dist': 0.36,
+            'rack_kp_v_dock_dist':   0.6,   # >0.5 para no atascarse en el deadband (freeze)
+            'rack_dock_max_linear':  0.04,  # un poco más rápido que el roller (0.035)
+            'rack_dock_tol_cx_px':   15.0,
+            'rack_kp_w_dock_px':     0.0022,
+            'rack_kd_w_dock_px':     0.0011,
         }],
         output='screen',
         condition=IfCondition(LaunchConfiguration('qr')),
@@ -186,6 +199,38 @@ def generate_launch_description():
         }],
         output='screen',
         condition=IfCondition(LaunchConfiguration('logos')),
+    )
+
+    # ── Logo-stop for the RACK pick approach ──────────────────────────
+    # Runs HERE on the laptop (the camera already crosses for qr_node) so the
+    # 2 GB Nano stays light. Uses the RACK logo template (the foreshortened
+    # top-view E80 logo captured at the rack ideal pose) and is GATED to
+    # PICK_FROM_RACK via active_state — it only fires during the rack pick and
+    # never touches the roller pick. The rack pick's approach is otherwise
+    # identical to the roller (PickFromRack inherits Pick's logo-stop creep).
+    logo_stop_arg = DeclareLaunchArgument(
+        'logo_stop', default_value='true',
+        description='Run logo_stop_debug here with the RACK logo template, gated '
+                    'to PICK_FROM_RACK, for the rack pick approach-stop.')
+    logo_stop_node = Node(
+        package='perception', executable='logo_stop_debug', name='logo_stop_debug',
+        parameters=[{
+            'use_sim_time':  False,
+            'image_topic':   '/video_source/raw',
+            'qos':           'sensor_data',
+            'show_window':   False,
+            'process_hz':    12.0,
+            'mode':          2,             # template multiescala
+            'template_path': os.path.join(pkg_perc, 'config', 'e80_logo_ref_rack.png'),
+            'stop_scale':    0.95,          # escala (1.0 = pose ideal) a la que para
+            'match_thr':     0.40,
+            'roi_top_pct':   30,            # logo en la franja inferior del cuadro
+            'hold_frames':   4,
+            'publish_debug': True,
+            'active_state':  'PICK_FROM_RACK',  # solo dispara en el pick de rack
+        }],
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('logo_stop')),
     )
 
     # ── Voice control ─────────────────────────────────────────────────
@@ -226,7 +271,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         start_mode_arg, map_yaml_arg, rviz_arg, qr_arg, qr_dry_run_arg, qr_dock_dist_arg,
-        logos_arg, logo_model_arg,
+        logos_arg, logo_model_arg, logo_stop_arg,
         robot_state_publisher,
         joint_state_publisher,
         map_odom_relay,
@@ -235,6 +280,7 @@ def generate_launch_description():
         dashboard_node,
         qr_node,
         logo_classifier_node,
+        logo_stop_node,
         voice_node,
         rviz_node,
     ])

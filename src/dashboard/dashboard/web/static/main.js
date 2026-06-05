@@ -394,6 +394,8 @@ function initQuickControl() {
     ?.addEventListener('click', () => _sendQuickMission('RACK_TO_TRUCK'));
   document.getElementById('btnMissionPick')
     ?.addEventListener('click', () => _sendQuickMission('PICK_ONLY'));
+  document.getElementById('btnMissionPickRack')
+    ?.addEventListener('click', () => _sendQuickMission('PICK_ONLY', {rack: true}));
   document.getElementById('btnMissionRelease')
     ?.addEventListener('click', () => _sendQuickMission('RELEASE_ONLY', {qr: 'Popsi'}));
   document.getElementById('btnMissionAbort')?.addEventListener('click', () => {

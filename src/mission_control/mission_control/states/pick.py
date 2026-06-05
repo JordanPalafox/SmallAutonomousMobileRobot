@@ -58,10 +58,11 @@ class Pick(DebuggableState):
         vision_stop: bool,
         vision_fresh_s: float,
         transport_level: int,
+        state_name: str = "PICK",
         **kwargs,
     ) -> None:
         super().__init__(
-            "PICK", ["picked", "done", "failed", "stop"], debug_ctx,
+            state_name, ["picked", "done", "failed", "stop"], debug_ctx,
             abort_outcome="stop", **kwargs,
         )
         self._publish_align = publish_alignment_start_fn
@@ -136,18 +137,11 @@ class Pick(DebuggableState):
                                "RELEASE_LOAD will use SEARCH's qr_value %r.",
                                bb_get(blackboard, "qr_value"))
 
-        # --- 3) creep forward toward the pallet: stop by VISION (Electric-80
-        #         logo at target distance) BEFORE touching the load, so the
-        #         motor never stalls into it and browns out the Jetson. Wheel
-        #         stall and the time limit remain as safety fallbacks. ---
-        if drive_until_approach_stop(
-                self._debug, blackboard, self._publish_cmd,
-                self._drive_speed, 0.0, self._forward_time,
-                grace=self._stall_grace, stall_speed=self._stall_speed,
-                stall_ticks=self._stall_ticks,
-                vision_enabled=self._vision_stop,
-                vision_fresh_s=self._vision_fresh,
-                tag="PICK fwd") == "stop":
+        # --- 3) close the final gap to the load. Roller (this base class) creeps
+        #         with the VISION (Electric-80 logo) stop + wheel-stall/time
+        #         fallbacks. PICK_FROM_RACK overrides _approach_load with a fixed
+        #         odometry advance (the rack QR/logo leave the frame up close). ---
+        if self._approach_load(blackboard) == "stop":
             return "stop"
 
         # --- 4) lift the pallet (change to lift level) ---
@@ -180,3 +174,23 @@ class Pick(DebuggableState):
             return "failed"
 
         return "done" if mission.get("pick_only") else "picked"
+
+    # ------------------------------------------------------------------
+    def _approach_load(self, blackboard: Blackboard) -> str:
+        """Step 3: close the final gap to the load. Returns 'stop' on abort,
+        any other string on success.
+
+        Base (roller) strategy: creep forward stopping by VISION (Electric-80
+        logo at target distance) BEFORE contact, with wheel-stall + a time limit
+        as safety fallbacks — this is the brownout-safe approach for the roller.
+        PICK_FROM_RACK overrides this with a fixed odometry advance, because the
+        rack QR and logo drop out of the camera frame at the close pick pose.
+        """
+        return drive_until_approach_stop(
+            self._debug, blackboard, self._publish_cmd,
+            self._drive_speed, 0.0, self._forward_time,
+            grace=self._stall_grace, stall_speed=self._stall_speed,
+            stall_ticks=self._stall_ticks,
+            vision_enabled=self._vision_stop,
+            vision_fresh_s=self._vision_fresh,
+            tag="PICK fwd")

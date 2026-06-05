@@ -45,6 +45,10 @@ from std_msgs.msg import Bool, String
 from .qr_pose_detector import QRPoseDetector
 from .odometry_tracker import OdometryTracker
 
+# Limita hilos de OpenCV: evita que la deteccion QR a 640x360 acapare los 4
+# cores del Nano y deje sin CPU a la camara/control.
+cv2.setNumThreads(2)
+
 
 class State(str, Enum):
     IDLE = 'IDLE'
@@ -109,6 +113,12 @@ class QRQuadAlignmentNode(Node):
         # ---- I/O ----
         self.declare_parameter('image_topic', '/video_source/raw')
         self.declare_parameter('qos', 'sensor_data')
+        # Maxima tasa de DETECCION QR (Hz). El resto de frames se descartan:
+        # detectar en cada frame saturaba la CPU del Nano a 640x360.
+        self.declare_parameter('process_hz', 10.0)
+        # Estados del SM (/robot_state) donde NO se necesita detectar QR
+        # (navegacion / reposo) -> se salta detect() para liberar CPU a SLAM.
+        self.declare_parameter('detect_states_off', 'IDLE,NAV_TO_TRUCK,MISSION_DONE,MISSION_FAILED')
         self.declare_parameter(
             'camera_params', 'src/perception/config/camera_params.yaml'
         )
@@ -126,7 +136,7 @@ class QRQuadAlignmentNode(Node):
         # Si |cx_px - target_cx_px| >= esto -> maniobra 90° + DOCK.
         # Default 60 px en una imagen 320 ancho: el QR debe estar a mas
         # de 60 px del centro horizontal para que dispare la maniobra.
-        self.declare_parameter('center_threshold_px', 60.0)
+        self.declare_parameter('center_threshold_px', 120.0)
         # EMA sobre geometria para snapshot estable.
         self.declare_parameter('plan_ema_alpha', 0.30)
 
@@ -142,10 +152,10 @@ class QRQuadAlignmentNode(Node):
         # Posicion ideal del centro del QR en la imagen cuando terminar.
         # Defaults capturados con la camara actual (320x240): QR centrado
         # horizontalmente, cerca del borde inferior (justo antes de perderlo).
-        self.declare_parameter('target_cx_px', 160.0)
-        self.declare_parameter('target_cy_px', 190.0)
+        self.declare_parameter('target_cx_px', 320.0)
+        self.declare_parameter('target_cy_px', 285.0)
         self.declare_parameter('dock_tol_cx_px', 15.0)   # estricto: centra mejor el palet en X (~0.6cm @ dock)
-        self.declare_parameter('dock_tol_cy_px', 15.0)
+        self.declare_parameter('dock_tol_cy_px', 22.5)
         # Ganancias DOCK
         self.declare_parameter('dock_max_linear', 0.035) # m/s — lento pero por ENCIMA del deadband con margen (subido 0.025→0.035: a 0.025 el acople al rumbo lo dejaba bajo el deadband y se frenaba)
         self.declare_parameter('kp_v_dock_px', 0.0006)   # m/s por pixel de err_cy
@@ -181,6 +191,39 @@ class QRQuadAlignmentNode(Node):
         # is treated as DONE (if also within dock_lost_margin of the target).
         self.declare_parameter('dock_lost_ticks', 2)
         self.declare_parameter('dock_lost_margin', 0.10)  # m extra distance allowed
+
+        # ---- RACK dock profile (mission 2: PICK_FROM_RACK) ----
+        # El QR del rack está MÁS ABAJO en la imagen y a MAYOR distancia de dock
+        # que el del roller. Cuando /robot_state == rack_dock_state cambiamos el
+        # objetivo de DOCK (cx, cy, distancia) a estos valores calibrados para el
+        # rack; en cualquier otro estado se usa el objetivo por defecto (roller).
+        # Calibrado 2026-06-05 en la pose ideal del rack (QR "Wolmar", 640x360,
+        # 40/40 detecciones): cx=333.3 cy=260.5 dist=345mm.
+        self.declare_parameter('rack_dock_state', 'PICK_FROM_RACK')
+        self.declare_parameter('rack_target_cx_px', 333.3)
+        self.declare_parameter('rack_target_cy_px', 260.5)
+        self.declare_parameter('rack_dock_target_dist', 0.34)
+        # Forward gain (m/s per m) for the RACK dock. Higher than the roller's so
+        # the advance command stays above the motor deadband all the way to the
+        # distance tolerance — otherwise the dock FREEZES ~2-5 cm short (v drops
+        # below the deadband while dist_err is still > tol) with the QR still in
+        # frame (the stuck-in-DOCK we saw). 0.8: at dist_err=tol(0.03) v_raw>=deadband.
+        self.declare_parameter('rack_kp_v_dock_dist', 0.8)
+        # Approach SPEED cap for the rack dock (m/s). Lower than the roller's
+        # 0.035 so it does NOT overshoot and lose the low rack QR past the target
+        # (the QR-visible window is narrow; a fast approach + detection/EMA lag
+        # blew past it and lost the QR). Slow + precise here; the fixed 6 cm
+        # odometry advance does the rest of the travel.
+        self.declare_parameter('rack_dock_max_linear', 0.02)
+        # Stricter X (cx) tolerance for the rack DONE, to guarantee the robot is
+        # well centred on the pallet before the advance + lift. A tighter tol
+        # needs a higher centring gain: the angular deadband (0.03 rad/s) makes
+        # the smallest correctable cx error ~= deadband/kp_w, so kp_w must rise
+        # too or DONE never converges (it stalls just outside tol). kd_w scales
+        # with kp_w to keep the damping. Roller keeps its looser tol/gains.
+        self.declare_parameter('rack_dock_tol_cx_px', 10.0)   # px (roller 15)
+        self.declare_parameter('rack_kp_w_dock_px', 0.004)    # rad/s per px (roller 0.0022)
+        self.declare_parameter('rack_kd_w_dock_px', 0.002)    # rad/s per px/s (roller 0.0011)
 
         # ---- Vision / safety ----
         self.declare_parameter('detection_max_age_s', 3.0)
@@ -232,6 +275,31 @@ class QRQuadAlignmentNode(Node):
         self._kp_v_dock_dist   = float(self.get_parameter('kp_v_dock_dist').value)
         self._dock_lost_ticks  = int(self.get_parameter('dock_lost_ticks').value)
         self._dock_lost_margin = float(self.get_parameter('dock_lost_margin').value)
+        # DOCK profiles seleccionados por /robot_state en _robot_state_cb ->
+        # _apply_dock_profile. Cada perfil mapea sufijo_de_atributo -> valor y se
+        # aplica como self._<sufijo>. Roller = los valores leídos arriba (misión
+        # 1, intacta); rack = el set calibrado/afinado para el rack.
+        self._rack_dock_state = str(self.get_parameter('rack_dock_state').value).strip().upper()
+        self._roller_profile = {
+            'target_cx_px':     self._target_cx_px,
+            'target_cy_px':     self._target_cy_px,
+            'dock_target_dist': self._dock_target_dist,
+            'kp_v_dock_dist':   self._kp_v_dock_dist,
+            'v_dock_max':       self._v_dock_max,
+            'tol_cx_px':        self._tol_cx_px,
+            'kp_w_dock_px':     self._kp_w_dock_px,
+            'kd_w_dock_px':     self._kd_w_dock_px,
+        }
+        self._rack_profile = {
+            'target_cx_px':     float(self.get_parameter('rack_target_cx_px').value),
+            'target_cy_px':     float(self.get_parameter('rack_target_cy_px').value),
+            'dock_target_dist': float(self.get_parameter('rack_dock_target_dist').value),
+            'kp_v_dock_dist':   float(self.get_parameter('rack_kp_v_dock_dist').value),
+            'v_dock_max':       float(self.get_parameter('rack_dock_max_linear').value),
+            'tol_cx_px':        float(self.get_parameter('rack_dock_tol_cx_px').value),
+            'kp_w_dock_px':     float(self.get_parameter('rack_kp_w_dock_px').value),
+            'kd_w_dock_px':     float(self.get_parameter('rack_kd_w_dock_px').value),
+        }
         self._centered_count   = 0
         self._dock_stable_count: int = 0
 
@@ -288,8 +356,10 @@ class QRQuadAlignmentNode(Node):
 
         # ---- ROS I/O ----
         self._bridge = CvBridge()
-        self.create_subscription(Image, self._image_topic, self._image_cb, img_qos)
+        self._img_qos = img_qos
+        self._img_sub = self.create_subscription(Image, self._image_topic, self._image_cb, img_qos)
         self.create_subscription(Bool, '/alignment_start', self._start_cb, 10)
+        self.create_subscription(String, '/robot_state', self._robot_state_cb, 10)
         self._pub_cmd = self.create_publisher(Twist, '/cmd_vel_in', cmd_qos)
         self._pub_state = self.create_publisher(String, '/alignment_state', 10)
         self._pub_qr = self.create_publisher(PoseArray, '/qr_poses', 10)
@@ -314,6 +384,19 @@ class QRQuadAlignmentNode(Node):
         self._last_det_time: Optional[float] = None
         self._latest_frame: Optional[np.ndarray] = None
         self._latest_dets: List[dict] = []
+        # Throttle de _image_cb: detecta a process_hz como maximo y descarta el
+        # resto. El control corre en su propio timer (_control_tick) usando la
+        # ultima geometria, asi que reducir la tasa de deteccion NO afecta el lazo.
+        self._proc_min_dt = 1.0 / max(1.0, float(self.get_parameter('process_hz').value))
+        self._last_proc = 0.0
+        # Gating de deteccion por estado del SM. Default ON: si nunca llega
+        # /robot_state, se detecta igual (sin regresion). SEARCH lee /qr_detected
+        # con el nodo en IDLE, por eso NO gateamos por el estado interno sino por
+        # el estado del SM (SEARCH/PICK/RELEASE_LOAD detectan; NAV/IDLE no).
+        self._detect_off_states = {st.strip().upper() for st in
+            str(self.get_parameter('detect_states_off').value).split(',') if st.strip()}
+        self._detect_enabled = True
+        self._robot_state = ''
         # Rotacion 90° aplicada en ROTATE (rad, +pi/2 o -pi/2 si hubo
         # maniobra, 0 si fue directo a DOCK). DOCK la usa para elegir la
         # direccion de busqueda cuando pierde el QR.
@@ -335,6 +418,13 @@ class QRQuadAlignmentNode(Node):
 
     # ------------------------------------------------------------------
     def _image_cb(self, msg: Image) -> None:
+        # Frame-skip: respeta process_hz para no saturar la CPU.
+        now = time.monotonic()
+        if (now - self._last_proc) < self._proc_min_dt:
+            return
+        self._last_proc = now
+        if not self._detect_enabled:
+            return
         try:
             frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         except Exception:
@@ -409,6 +499,42 @@ class QRQuadAlignmentNode(Node):
             g = self._geom_latest
             p = Point(); p.x = g['qr_x']; p.y = g['qr_y']; p.z = 0.0
             self._pub_goal.publish(p)
+
+    def _apply_dock_profile(self, rack: bool) -> None:
+        """Selecciona el objetivo de DOCK (cx, cy, distancia) según el estado del
+        SM: perfil RACK para PICK_FROM_RACK, perfil ROLLER (por defecto) en otro
+        caso. Solo cambia/loggea cuando el perfil realmente cambia."""
+        prof = self._rack_profile if rack else self._roller_profile
+        if all(getattr(self, '_' + k) == v for k, v in prof.items()):
+            return
+        for k, v in prof.items():
+            setattr(self, '_' + k, v)
+        self.get_logger().info(
+            f'DOCK profile -> {"RACK" if rack else "ROLLER"} '
+            f'(cx={prof["target_cx_px"]:.1f} cy={prof["target_cy_px"]:.1f} '
+            f'dist={prof["dock_target_dist"]*1000:.0f}mm kp_v={prof["kp_v_dock_dist"]:.2f} '
+            f'vmax={prof["v_dock_max"]:.3f} tol_cx={prof["tol_cx_px"]:.0f} '
+            f'kp_w={prof["kp_w_dock_px"]:.4f})')
+
+    def _robot_state_cb(self, msg: String) -> None:
+        st = (msg.data or '').strip().upper()
+        if st == self._robot_state:
+            return
+        self._robot_state = st
+        # Cambia el objetivo de DOCK al perfil del rack mientras se hace pick de
+        # un pallet de rack (PICK_FROM_RACK); vuelve al de roller en otro estado.
+        self._apply_dock_profile(rack=(st == self._rack_dock_state))
+        enabled = st not in self._detect_off_states
+        if enabled != self._detect_enabled:
+            self._detect_enabled = enabled
+            if enabled and self._img_sub is None:
+                self._img_sub = self.create_subscription(
+                    Image, self._image_topic, self._image_cb, self._img_qos)
+            elif not enabled and self._img_sub is not None:
+                self.destroy_subscription(self._img_sub)
+                self._img_sub = None
+            self.get_logger().info(
+                f'Deteccion QR {"ON" if enabled else "OFF"} (robot_state={st or "?"})')
 
     def _start_cb(self, msg: Bool) -> None:
         if msg.data:
@@ -725,6 +851,14 @@ class QRQuadAlignmentNode(Node):
     def _render_ui(self) -> None:
         if self._latest_frame is None:
             return
+        # Con la deteccion gateada OFF (navegacion) la imagen de debug se
+        # republica a baja tasa (~3 Hz): no gastar CPU dibujando/serializando
+        # 640x360 cada tick. El dashboard sigue vivo y SLAM recupera CPU.
+        if not self._detect_enabled:
+            _t = time.monotonic()
+            if (_t - getattr(self, '_last_ui_t', 0.0)) < 0.33:
+                return
+            self._last_ui_t = _t
         # Build the annotated frame when EITHER a local window or the dashboard
         # debug-image stream is wanted (headless robot → publish only).
         if not (self._show_window or self._publish_debug_image):

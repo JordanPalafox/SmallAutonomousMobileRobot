@@ -1,10 +1,13 @@
 camera:
-  image_width: 320
-  image_height: 240
+  image_width: 640
+  image_height: 360
   # Row-major 3x3 intrinsic matrix [fx, 0, cx, 0, fy, cy, 0, 0, 1]
-  camera_matrix: [323.439246, 0.000000, 140.158238, 0.000000, 431.365170, 111.221576, 0.000000, 0.000000, 1.000000]
+  # Escalado analitico desde la calib 320x240 (4:3 anamorfico del modo 720p):
+  # horizontal x2 (fx,cx), vertical x1.5 (fy,cy). Distorsion = igual (coords norm.).
+  # Coincide con el camera_params de la Jetson (la camara publica 640x360).
+  camera_matrix: [646.878492, 0.000000, 280.316476, 0.000000, 647.047755, 166.832364, 0.000000, 0.000000, 1.000000]
   # Distortion coefficients [k1, k2, p1, p2, k3]
   distortion_coefficients: [0.105333, 0.320207, -0.006615, -0.023090, -1.054484]
   # Physical side length of ArUco markers in metres
   marker_length: 0.05
-  # calibrated_at: 2026-05-26T00:16:56 rms=0.4312px captures=15
+  # calibrated_at: 2026-05-26 (320x240) -> scaled to 640x360 analytically 2026-06

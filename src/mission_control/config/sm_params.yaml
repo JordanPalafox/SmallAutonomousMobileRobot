@@ -78,6 +78,22 @@ state_machine_node:
     pick_entry_level:     4       # fork height BEFORE docking (slide under the pallet)
     pick_lift_level:      5       # height to lift the pallet (after advancing)
     pick_transport_level: 3       # lifter height after backing out (carry) → ends PICK
+    # ── PICK_FROM_RACK (mission 2: RACK_TO_TRUCK) ────────────────────
+    # Misma maniobra que PICK pero con los niveles de lifter del rack. El número
+    # se manda a la FPGA y ella mueve el fork a la altura correspondiente.
+    # Secuencia: entry (forks listos) → dock → creep → lift (sube el pallet del
+    # rack) → reversa → transport (carga). Pedido: 1 → sube a 2 → reversa → baja a 1.
+    pick_rack_entry_level:     2  # fork height BEFORE docking (rack)
+    pick_rack_lift_level:      3  # height to lift the rack pallet
+    pick_rack_transport_level: 1  # lifter height after backing out (rack)
+    # Rack approach: QR-dock → creep CENTRANDO con el logo (gira para mantener el
+    # pallet centrado, así el lifter entra derecho) hasta el logo-stop, luego un
+    # avance fijo corto por odometría (el pallet del rack queda un poco más abajo).
+    pick_rack_advance_dist:    0.01   # m — avance fijo DESPUÉS del logo-stop
+    pick_rack_advance_speed:   0.04   # m/s del avance
+    pick_rack_center_kp:       0.0025 # rad/s por px de error de centrado del logo
+    pick_rack_center_w_max:    0.10   # rad/s — tope del giro de centrado
+    pick_wheel_radius:         0.05   # m — radio de rueda para lin_vel (util drive_distance)
     # Stall detection on the forward move: stop the instant the wheels can't turn
     # (blocked by the pallet) so the driver doesn't draw stall current. Wheel
     # speed from /wl,/wr (rad/s); at 0.10 m/s the wheels spin ~2 rad/s.

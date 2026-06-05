@@ -24,7 +24,7 @@ Runs here, on the robot:
                           save → relaunch needs no scp). Lives here, NOT on the
                           laptop (one node owns the /map_saver service).
   lifting_node          — FPGA lifter control over SPI (Tang Nano 20K on
-                          /dev/spidev0.0). Subscribes /lifter_level (UInt8 0-5).
+                          /dev/spidev0.0). Subscribes /lifter_level (UInt8 0-3).
                           Must run on the Jetson — it owns the SPI hardware.
 
 The LiDAR driver is NOT started here — it already runs as its own node,
@@ -143,17 +143,22 @@ def generate_launch_description():
     # Disable on the laptop with qr:=false there to avoid two nodes fighting on
     # /cmd_vel_in.
     qr_arg = DeclareLaunchArgument(
-        'qr', default_value='true',
-        description='Run qr_quad_alignment (PICK docking) on the Jetson.')
+        'qr', default_value='false',
+        description='Run qr_quad_alignment (PICK docking) on the Jetson. Default '
+                    'FALSE now: at 640x360 the QR detection pegged a whole core '
+                    '(~105%) and saturated the 2 GB Nano, so docking runs on the '
+                    'laptop (laptop.launch.py qr:=true). Set qr:=true here only to '
+                    'go back to on-Jetson docking (no WiFi lag, but heavy CPU).')
     qr_dry_run_arg = DeclareLaunchArgument(
         'qr_dry_run', default_value='false',
         description='Run qr_quad_alignment WITHOUT driving /cmd_vel_in (testing).')
     qr_dock_dist_arg = DeclareLaunchArgument(
-        'qr_dock_dist', default_value='0.33',
+        'qr_dock_dist', default_value='0.28',
         description='DOCK stop distance to the QR in metres (height-agnostic). '
-                    '0.0 = legacy pixel-cy mode. Calibrated 2026-06-03 at the '
-                    'ideal dock pose: dist_qr=330mm, cx=173px, cy=187px (40/40 '
-                    'detections). Read the live "d=..mm" in the dashboard to retune.')
+                    '0.0 = legacy pixel-cy mode. Calibrated 2026-06-04 at the '
+                    'ideal dock pose (QR "Popsi", 640x360): dist_qr=281mm, '
+                    'cx=325.6px, cy=245.9px (50/50 detections). Read the live "d=..mm" '
+                    'in the dashboard to retune.')
 
     laser_frame_bridge = Node(
         package='tf2_ros',
@@ -232,10 +237,26 @@ def generate_launch_description():
             'show_window':         False,
             'publish_debug_image': True,
             'dock_target_dist':    ParameterValue(LaunchConfiguration('qr_dock_dist'), value_type=float),
-            # Calibrated at the ideal dock pose (the QR sits right-of-centre, so
-            # the old target_cx_px=160 never met tol and DOCK never reached DONE).
-            'target_cx_px':        173.0,
-            'target_cy_px':        187.0,
+            # Calibrated 2026-06-04 at the ideal dock pose (QR "Popsi", 640x360,
+            # 50/50 detections, near-centred: cx~325.6, bearing -2.6 deg).
+            'target_cx_px':        325.6,
+            'target_cy_px':        245.9,
+            # RACK dock profile (mission 2: PICK_FROM_RACK). qr_quad_alignment
+            # swaps to these when /robot_state == PICK_FROM_RACK: the rack QR is
+            # lower in the frame and farther. Recalibrated 2026-06-05 at the ideal
+            # rack dock pose (QR "Wolmar", 640x360, 40/40 detections, tight spread).
+            'rack_target_cx_px':     326.8,
+            'rack_target_cy_px':     240.4,   # bajado 10 px (250.4 -> 240.4)
+            'rack_dock_target_dist': 0.36,
+            # Dock CONTROL params set EQUAL to the roller (per user: "las del
+            # roller están bien"). Only the TARGET (cx/cy/dist) stays rack-specific.
+            # NOTE: kp_v=0.30 can re-introduce the freeze-short if the dock starts
+            # far (>~0.41 m); tol_cx must be 15 with kp_w=0.0022 (deadband floor).
+            'rack_kp_v_dock_dist':   0.30,
+            'rack_dock_max_linear':  0.035,
+            'rack_dock_tol_cx_px':   15.0,
+            'rack_kp_w_dock_px':     0.0022,
+            'rack_kd_w_dock_px':     0.0011,
         }],
         condition=IfCondition(LaunchConfiguration('qr')),
         output='screen', emulate_tty=True,

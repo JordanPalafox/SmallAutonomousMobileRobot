@@ -42,12 +42,16 @@ class Search(DebuggableState):
     """Mission step 1 — *buscar el pallet*.
 
     Outcomes:
-        found     — a candidate was reached and a fresh QR payload was read
-                    (or scan_qr is disabled and the candidate was reached).
-        done      — same success condition, but for a search_only mission
-                    (SEARCH_ROLLERS / SEARCH_RACKS): stop here, no pick/deliver.
-        not_found — invalid mission, or empty candidate queue.
-        stop      — abort raised.
+        found      — a candidate was reached and a fresh QR payload was read
+                     (or scan_qr is disabled and the candidate was reached).
+                     Roller / custom flow → PICK.
+        found_rack — same success condition, but the mission is RACK_TO_TRUCK
+                     (mission 2) → PICK_FROM_RACK (rack lifter levels + rack QR
+                     dock calibration).
+        done       — same success condition, but for a search_only mission
+                     (SEARCH_ROLLERS / SEARCH_RACKS): stop here, no pick/deliver.
+        not_found  — invalid mission, or empty candidate queue.
+        stop       — abort raised.
     """
 
     def __init__(
@@ -58,7 +62,7 @@ class Search(DebuggableState):
         **kwargs,
     ) -> None:
         super().__init__(
-            "SEARCH", ["found", "not_found", "stop", "done"], debug_ctx,
+            "SEARCH", ["found", "found_rack", "not_found", "stop", "done"], debug_ctx,
             abort_outcome="stop", **kwargs,
         )
         self._publish_goal = publish_goal_fn
@@ -73,11 +77,14 @@ class Search(DebuggableState):
             return "not_found"
 
         # PICK_ONLY test: robot is already at the pallet — skip search/nav,
-        # go straight to PICK.
+        # go straight to PICK (roller) or PICK_FROM_RACK (rack).
         if mission.get("pick_only"):
             blackboard["current_candidate"] = None
             blackboard["qr_value"] = None
             blackboard["resolved_dest"] = None
+            if mission.get("pick_rack"):
+                logger.info("[SEARCH] pick_only (rack) — skipping search, going straight to PICK_FROM_RACK.")
+                return "found_rack"
             logger.info("[SEARCH] pick_only — skipping search, going straight to PICK.")
             return "found"
 
@@ -100,8 +107,16 @@ class Search(DebuggableState):
         blackboard["qr_value"] = None
         blackboard["resolved_dest"] = mission.get("destination")
         scan_qr = bool(mission.get("scan_qr", True))
-        # SEARCH_ROLLERS / SEARCH_RACKS stop at the pallet instead of picking it.
-        success = "done" if mission.get("search_only") else "found"
+        # Success outcome routes the pallet-found handoff:
+        #   SEARCH_ROLLERS / SEARCH_RACKS (search_only) → done (stop, no pick).
+        #   RACK_TO_TRUCK (mission 2)                   → found_rack → PICK_FROM_RACK.
+        #   everything else (roller / custom)           → found → PICK.
+        if mission.get("search_only"):
+            success = "done"
+        elif mission.get("type") == "RACK_TO_TRUCK":
+            success = "found_rack"
+        else:
+            success = "found"
 
         logger.info(
             "[SEARCH] Mission %s — searching candidate(s): %s",

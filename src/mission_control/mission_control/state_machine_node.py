@@ -61,6 +61,7 @@ from mission_control.states.mission_done import MissionDone
 from mission_control.states.mission_failed import MissionFailed
 from mission_control.states.nav_to_truck import NavToTruck
 from mission_control.states.pick import Pick
+from mission_control.states.pick_from_rack import PickFromRack
 from mission_control.states.release_load import ReleaseLoad
 from mission_control.states.search import Search
 
@@ -123,6 +124,22 @@ class StateMachineNode(Node):
         self.declare_parameter("pick_entry_level", 4)          # fork height BEFORE docking
         self.declare_parameter("pick_lift_level", 5)           # height to lift the pallet
         self.declare_parameter("pick_transport_level", 3)      # lifter height after backing out
+        # PICK_FROM_RACK (mission 2 / RACK_TO_TRUCK): same maneuver as PICK but
+        # rack lifter levels. The level number is sent to the FPGA, which drives
+        # the fork to the matching height. Sequence: entry (forks staged) → dock
+        # → creep → lift (pallet off the rack) → reverse → transport (carry).
+        self.declare_parameter("pick_rack_entry_level", 2)     # fork height BEFORE docking (rack)
+        self.declare_parameter("pick_rack_lift_level", 3)      # height to lift the rack pallet
+        self.declare_parameter("pick_rack_transport_level", 1) # lifter height after backing out (rack)
+        # Rack approach: after the QR dock, creep with LOGO CENTERING (steer to
+        # keep the pallet centred so the lifter enters straight) until the
+        # logo-stop fires, then a small fixed odometry advance because the rack
+        # pallet sits lower than the logo-stop pose.
+        self.declare_parameter("pick_rack_advance_dist", 0.01)   # m, fixed advance AFTER the logo-stop
+        self.declare_parameter("pick_rack_advance_speed", 0.04)  # m/s for that advance
+        self.declare_parameter("pick_rack_center_kp", 0.0025)    # rad/s per px of logo centre error
+        self.declare_parameter("pick_rack_center_w_max", 0.10)   # rad/s cap for the centering turn
+        self.declare_parameter("pick_wheel_radius", 0.05)        # m, for lin_vel from /wl,/wr (drive_distance util)
         # Stall detection for the forward-into-pallet move: stop the instant the
         # wheels can't turn (robot blocked by the pallet) so the motor driver
         # isn't left drawing stall current. Stall = wheel speed (/wl,/wr rad/s)
@@ -205,6 +222,14 @@ class StateMachineNode(Node):
         pick_entry_level       = int(self.get_parameter("pick_entry_level").value)
         pick_lift_level        = int(self.get_parameter("pick_lift_level").value)
         pick_transport_level   = int(self.get_parameter("pick_transport_level").value)
+        pick_rack_entry_level     = int(self.get_parameter("pick_rack_entry_level").value)
+        pick_rack_lift_level      = int(self.get_parameter("pick_rack_lift_level").value)
+        pick_rack_transport_level = int(self.get_parameter("pick_rack_transport_level").value)
+        pick_rack_advance_dist    = float(self.get_parameter("pick_rack_advance_dist").value)
+        pick_rack_advance_speed   = float(self.get_parameter("pick_rack_advance_speed").value)
+        pick_rack_center_kp       = float(self.get_parameter("pick_rack_center_kp").value)
+        pick_rack_center_w_max    = float(self.get_parameter("pick_rack_center_w_max").value)
+        self._wheel_radius        = float(self.get_parameter("pick_wheel_radius").value)
         pick_stall_grace       = float(self.get_parameter("pick_stall_grace").value)
         pick_stall_speed       = float(self.get_parameter("pick_stall_speed").value)
         pick_stall_ticks       = int(self.get_parameter("pick_stall_ticks").value)
@@ -250,6 +275,9 @@ class StateMachineNode(Node):
         # RELIABLE publisher is compatible with a BEST_EFFORT subscription).
         self.create_subscription(Bool, "/approach_stop/should_stop",
                                  self._cb_approach_stop, qos_profile_sensor_data)
+        # Logo lateral centre error (px) for the rack approach centering.
+        self.create_subscription(Point, "/approach_stop/center_error",
+                                 self._cb_approach_center, qos_profile_sensor_data)
 
         self._pub_goal       = self.create_publisher(String, "/goal_waypoint",   qos)
         self._pub_cmd        = self.create_publisher(Twist,  "/cmd_vel_in",      qos)
@@ -276,6 +304,13 @@ class StateMachineNode(Node):
             pick_vision_stop=pick_vision_stop,
             pick_vision_fresh_s=pick_vision_fresh_s,
             pick_transport_level=pick_transport_level,
+            pick_rack_entry_level=pick_rack_entry_level,
+            pick_rack_lift_level=pick_rack_lift_level,
+            pick_rack_transport_level=pick_rack_transport_level,
+            pick_rack_advance_dist=pick_rack_advance_dist,
+            pick_rack_advance_speed=pick_rack_advance_speed,
+            pick_rack_center_kp=pick_rack_center_kp,
+            pick_rack_center_w_max=pick_rack_center_w_max,
             truck_default_wp=truck_default_wp,
             truck_resolve_qr=truck_resolve_qr,
             logo_truck_wps=logo_truck_wps,
@@ -321,10 +356,12 @@ class StateMachineNode(Node):
         bb["mission_error_reason"] = None
         bb["front_distance"]       = None    # min front-arc LiDAR range (m), telemetry
         bb["wheel_speed"]          = None    # max |wheel| rad/s, for PICK stall detection
+        bb["lin_vel"]              = None    # signed linear speed (m/s) from /wl,/wr, for the rack odometry advance
         # Vision stop for the PICK creep, stored as ONE tuple (should_stop, stamp)
         # so the boolean and its monotonic timestamp are always read consistently
         # across the executor and SM threads (no torn read of two separate keys).
         bb["approach_stop_signal"] = None
+        bb["logo_center_error"]    = None    # (px, stamp) logo lateral error, for rack approach centering
 
     # ------------------------------------------------------------------ waypoints
     @staticmethod
@@ -415,10 +452,12 @@ class StateMachineNode(Node):
     def _cb_wl(self, msg: Float32) -> None:
         self._wl = float(msg.data)
         self._blackboard["wheel_speed"] = max(abs(self._wl), abs(self._wr))
+        self._blackboard["lin_vel"] = self._wheel_radius * (self._wl + self._wr) / 2.0
 
     def _cb_wr(self, msg: Float32) -> None:
         self._wr = float(msg.data)
         self._blackboard["wheel_speed"] = max(abs(self._wl), abs(self._wr))
+        self._blackboard["lin_vel"] = self._wheel_radius * (self._wl + self._wr) / 2.0
 
     def _cb_approach_stop(self, msg: Bool) -> None:
         """Vision stop for the PICK creep (logo at target distance).
@@ -427,6 +466,12 @@ class StateMachineNode(Node):
         thread can never see a fresh bool paired with a stale timestamp.
         """
         self._blackboard["approach_stop_signal"] = (bool(msg.data), time.monotonic())
+
+    def _cb_approach_center(self, msg: Point) -> None:
+        """Logo lateral centre error (px) from logo_stop_debug — x = logo cx
+        minus frame centre. The rack approach steers on this (stamped so the
+        creep uses only a FRESH reading) to keep the pallet centred."""
+        self._blackboard["logo_center_error"] = (float(msg.x), time.monotonic())
 
     def _cb_voice(self, msg: String) -> None:
         cmd = msg.data.strip().lower()
@@ -549,6 +594,13 @@ class StateMachineNode(Node):
         pick_vision_stop: bool,
         pick_vision_fresh_s: float,
         pick_transport_level: int,
+        pick_rack_entry_level: int,
+        pick_rack_lift_level: int,
+        pick_rack_transport_level: int,
+        pick_rack_advance_dist: float,
+        pick_rack_advance_speed: float,
+        pick_rack_center_kp: float,
+        pick_rack_center_w_max: float,
         truck_default_wp: str,
         truck_resolve_qr: bool,
         logo_truck_wps: list,
@@ -576,10 +628,11 @@ class StateMachineNode(Node):
             "SEARCH",
             Search(self._debug, self._publish_goal, scan_qr_timeout, **kw),
             transitions={
-                "found":     "PICK",
-                "done":      "MISSION_DONE",   # SEARCH_ROLLERS / SEARCH_RACKS: stop after finding
-                "not_found": "MISSION_FAILED",
-                "stop":      "MISSION_FAILED",
+                "found":      "PICK",            # roller / custom flow
+                "found_rack": "PICK_FROM_RACK",  # mission 2: RACK_TO_TRUCK
+                "done":       "MISSION_DONE",    # SEARCH_ROLLERS / SEARCH_RACKS: stop after finding
+                "not_found":  "MISSION_FAILED",
+                "stop":       "MISSION_FAILED",
             },
         )
         # STEP 2 — recoge: align to the pallet, then lift it.
@@ -594,6 +647,29 @@ class StateMachineNode(Node):
             transitions={
                 "picked": "NAV_TO_TRUCK",
                 "done":   "MISSION_DONE",     # PICK_ONLY test ends here
+                "failed": "MISSION_FAILED",
+                "stop":   "MISSION_FAILED",
+            },
+        )
+        # STEP 2 (mission 2) — recoge del RACK: misma maniobra que PICK pero con
+        # los niveles de lifter del rack. El nombre de estado "PICK_FROM_RACK" es
+        # lo que hace que qr_quad_alignment use la calibración de DOCK del rack
+        # (el QR del rack está más abajo y a mayor distancia que el del roller).
+        sm.add_state(
+            "PICK_FROM_RACK",
+            PickFromRack(self._debug, self._publish_alignment_start, self._publish_lifter,
+                         self._publish_cmd, alignment_timeout, lifter_timeout,
+                         pick_approach_speed, pick_forward_time, pick_reverse_time,
+                         pick_reverse_speed, pick_rack_entry_level, pick_rack_lift_level,
+                         pick_stall_grace, pick_stall_speed, pick_stall_ticks,
+                         pick_vision_stop, pick_vision_fresh_s, pick_rack_transport_level,
+                         advance_dist=pick_rack_advance_dist,
+                         advance_speed=pick_rack_advance_speed,
+                         center_kp=pick_rack_center_kp,
+                         center_w_max=pick_rack_center_w_max, **kw),
+            transitions={
+                "picked": "NAV_TO_TRUCK",
+                "done":   "MISSION_DONE",
                 "failed": "MISSION_FAILED",
                 "stop":   "MISSION_FAILED",
             },

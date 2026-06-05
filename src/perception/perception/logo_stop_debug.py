@@ -56,7 +56,7 @@ from rclpy.qos import (
     ReliabilityPolicy,
 )
 from sensor_msgs.msg import Image
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 
 WIN_T = 'logo_template'
 WIN_O = 'logo_orb'
@@ -104,6 +104,11 @@ class LogoStopDebug(Node):
         # Publicar la vista anotada aunque corra headless (Jetson) para verla
         # en remoto con rqt_image_view. Apagar en produccion para ahorrar CPU.
         self.declare_parameter('publish_debug', True)
+        # Solo publica should_stop=True cuando /robot_state == active_state
+        # (p.ej. 'PICK_FROM_RACK'). Vacío = siempre activo. Permite correr este
+        # detector en el LAPTOP con el template del RACK sin afectar el pick de
+        # roller, y se salta el matching fuera de ese estado (ahorra CPU).
+        self.declare_parameter('active_state', '')
 
         self._image_topic = str(self.get_parameter('image_topic').value)
         qos_name = str(self.get_parameter('qos').value).lower()
@@ -127,6 +132,8 @@ class LogoStopDebug(Node):
         self._d_inl = int(self.get_parameter('min_inliers').value)
         self._d_width = int(self.get_parameter('stop_width').value)
         self._publish_debug = bool(self.get_parameter('publish_debug').value)
+        self._active_state = str(self.get_parameter('active_state').value).strip().upper()
+        self._robot_state = ''
 
         # ---- QoS ----
         if qos_name in ('reliable', 'default'):
@@ -143,6 +150,7 @@ class LogoStopDebug(Node):
         # ---- ROS I/O ----
         self._bridge = CvBridge()
         self.create_subscription(Image, self._image_topic, self._image_cb, img_qos)
+        self.create_subscription(String, '/robot_state', self._robot_state_cb, 10)
         self._pub_stop = self.create_publisher(Bool, '/approach_stop/should_stop', 10)
         self._pub_center = self.create_publisher(Point, '/approach_stop/center_error', 10)
         self._pub_dbg = self.create_publisher(Image, '/approach_stop/debug_image', 10)
@@ -225,6 +233,10 @@ class LogoStopDebug(Node):
             return default
 
     # ------------------------------------------------------------------
+    def _robot_state_cb(self, msg: String) -> None:
+        self._robot_state = (msg.data or '').strip().upper()
+
+    # ------------------------------------------------------------------
     def _image_cb(self, msg: Image) -> None:
         try:
             frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
@@ -300,6 +312,14 @@ class LogoStopDebug(Node):
         if frame is None:
             return
         h, w = frame.shape[:2]
+
+        # Gate por estado del SM: si active_state está configurado y el SM no está
+        # en él, no hay paro (publica False) y se salta el matching (ahorra CPU).
+        if self._active_state and self._robot_state != self._active_state:
+            self._hold = 0
+            self._last_stop = False
+            self._pub_stop.publish(Bool(data=False))
+            return
 
         roi_top_pct = self._tb('ROI top %', WIN_T, self._d_roi)
         match_thr = self._tb('match thr x100', WIN_T, self._d_match) / 100.0

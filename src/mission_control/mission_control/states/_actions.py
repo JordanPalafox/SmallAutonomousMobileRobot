@@ -139,6 +139,64 @@ def drive_for_time(
         publish_cmd(0.0, 0.0)
 
 
+def drive_distance(
+    debug: DebugContext,
+    blackboard: Blackboard,
+    publish_cmd: Callable[[float, float], None],
+    distance: float,
+    speed: float,
+    *,
+    tag: str,
+    max_time: float | None = None,
+) -> str:
+    """Drive straight a FIXED ``distance`` (m) at ``speed`` (m/s) using
+    wheel-encoder odometry, then stop.
+
+    Used by PICK_FROM_RACK for the final blind advance: at the rack pick pose the
+    QR and logo are out of frame, so there is no vision feedback — but the
+    rack↔pallet geometry is fixed, so a measured odometry advance is repeatable.
+
+    Distance is integrated from ``blackboard['lin_vel']`` (signed linear speed
+    derived from /wl,/wr by the SM node). If no encoder reading is available it
+    falls back to integrating the COMMANDED speed (open-loop). A time cap
+    (``max_time`` or ~2.5× the expected duration) guarantees termination even if
+    the encoders go silent. ``distance`` < 0 drives backward. Returns 'ok' on
+    completion (distance reached or cap hit) or 'stop' on abort. Always zeroes
+    the command on exit.
+    """
+    target = abs(float(distance))
+    spd = abs(float(speed)) * (1.0 if distance >= 0 else -1.0)
+    cap = (float(max_time) if max_time is not None
+           else target / max(1e-3, abs(float(speed))) * 2.5 + 2.0)
+    traveled = 0.0
+    last = time.monotonic()
+    deadline = last + cap
+    logger.info("[%s] odometry advance %.0f mm @ %.3f m/s (cap %.1fs)",
+                tag, target * 1000.0, speed, cap)
+    try:
+        while traveled < target:
+            if debug.aborted:
+                return "stop"
+            debug.wait_if_paused()
+            now = time.monotonic()
+            dt = now - last
+            last = now
+            v = bb_get(blackboard, "lin_vel")
+            # Prefer measured encoder speed; fall back to the commanded speed if
+            # no reading, so the advance still terminates by distance not only time.
+            traveled += abs(v if v is not None else speed) * dt
+            if now >= deadline:
+                logger.warning("[%s] advance time cap (%.1fs) reached at %.0f mm.",
+                               tag, cap, traveled * 1000.0)
+                break
+            publish_cmd(spd, 0.0)
+            time.sleep(POLL_INTERVAL)
+        logger.info("[%s] advance done: %.0f mm", tag, traveled * 1000.0)
+        return "ok"
+    finally:
+        publish_cmd(0.0, 0.0)
+
+
 def drive_until_stall(
     debug: DebugContext,
     blackboard: Blackboard,
@@ -209,9 +267,22 @@ def drive_until_approach_stop(
     vision_enabled: bool,
     vision_fresh_s: float,
     tag: str,
+    center_kp: float = 0.0,
+    center_deadband_px: float = 10.0,
+    center_w_max: float = 0.10,
+    center_fresh_s: float = 1.0,
 ) -> str:
     """Creep into the load, stopping by VISION before contact, with the wheel
     stall and the time limit as safety fallbacks.
+
+    Optional logo CENTERING (``center_kp`` > 0): instead of the constant ``w``,
+    steer ``w = -center_kp * logo_center_error`` (px, from
+    blackboard['logo_center_error'] published by logo_stop_debug, fresher than
+    ``center_fresh_s``, capped at ``center_w_max``, ignored within
+    ``center_deadband_px``) so the robot stays aligned with the pallet while
+    creeping — used by PICK_FROM_RACK so the lifter enters the pallet straight
+    (the QR has left the frame up close). ``center_kp`` = 0 keeps the constant
+    ``w`` (roller behaviour).
 
     This is the brownout fix for the PICK forward approach: the old path only
     stopped once the wheels stalled — i.e. once the robot had already crashed
@@ -248,8 +319,21 @@ def drive_until_approach_stop(
             if debug.aborted:
                 return "stop"
             debug.wait_if_paused()
-            publish_cmd(v, w)
             now = time.monotonic()
+
+            # Angular command: optional logo CENTERING (center_kp>0) overrides the
+            # constant w — steer to bring the logo to the frame centre so the
+            # lifter enters the pallet straight. Only a FRESH logo reading steers;
+            # within the deadband or with no fresh reading we drive straight.
+            w_cmd = w
+            if center_kp > 0.0:
+                w_cmd = 0.0
+                ce = bb_get(blackboard, "logo_center_error")
+                if ce is not None:
+                    err_px, ce_stamp = ce
+                    if (now - ce_stamp) <= center_fresh_s and abs(err_px) > center_deadband_px:
+                        w_cmd = max(-center_w_max, min(center_w_max, -center_kp * err_px))
+            publish_cmd(v, w_cmd)
 
             # 1) Vision stop (primary) — stop BEFORE contact. Only honour a
             #    signal that ARRIVED AFTER this creep began (stamp >= t0): that

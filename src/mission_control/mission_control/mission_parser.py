@@ -283,8 +283,15 @@ def _build_pick_only_mission(data: dict, mid: str) -> Optional[dict]:
     then it aligns, approaches to the LiDAR target, and lifts. Ends after the
     pick (no nav-to-truck / place). ``pick_only`` makes SEARCH short-circuit to
     PICK and PICK finish to MISSION_DONE.
+
+    With ``rack: true`` the pick routes to PICK_FROM_RACK instead of PICK (rack
+    lifter levels + rack QR dock calibration) — for testing the mission-2 rack
+    pick in isolation with the robot already parked at the rack pallet.
     """
-    pickup_level = _coerce_level(data.get("pickup_level"), DEFAULT_PICKUP_LEVELS["rollers"])
+    is_rack = bool(data.get("rack", False))
+    default_pickup = (DEFAULT_PICKUP_LEVELS["racks"] if is_rack
+                      else DEFAULT_PICKUP_LEVELS["rollers"])
+    pickup_level = _coerce_level(data.get("pickup_level"), default_pickup)
     if pickup_level is None:
         return None
     return {
@@ -297,6 +304,7 @@ def _build_pick_only_mission(data: dict, mid: str) -> Optional[dict]:
         "place_level":     DEFAULT_PLACE_LEVEL_TRUCK,
         "skip_alignment":  bool(data.get("skip_alignment", False)),
         "pick_only":       True,
+        "pick_rack":       is_rack,       # True → SEARCH routes to PICK_FROM_RACK
     }
 
 
