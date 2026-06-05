@@ -16,7 +16,7 @@
 track: {x: 3.65, y: 4.85}
 
 markers:
-  - {id: 5,  x: 3.650, y: 4.075, z: 0.040, yaw_deg: 180.0, mount: wall}
+  - {id: 5,  x: 3.650, y: 4.075, z: 0.040, yaw_deg: 0.0,   mount: wall}
   - {id: 7,  x: 0.000, y: 4.515, z: 0.060, yaw_deg: 0.0,   mount: wall}
   - {id: 13, x: 2.400, y: 4.850, z: 0.060, yaw_deg: 270.0, mount: wall}
   - {id: 17, x: 0.505, y: 4.850, z: 0.080, yaw_deg: 270.0, mount: wall}

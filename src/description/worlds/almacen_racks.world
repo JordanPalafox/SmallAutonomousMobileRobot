@@ -777,7 +777,7 @@
         </collision>
       </link></model>
     <model name="aruco_5"><static>true</static>
-      <pose>4.0750 0.0000 0.0400 3.14159 -1.57080 1.57080</pose>
+      <pose>4.0750 0.0000 0.0400 3.14159 -1.57080 -1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
