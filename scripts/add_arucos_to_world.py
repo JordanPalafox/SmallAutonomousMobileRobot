@@ -38,7 +38,10 @@ def aruco2gz(ax, ay, az, ayaw_deg):
 def marker_sdf(m):
     mid            = m['id']
     gx, gy, gz, yaw_gz = aruco2gz(m['x'], m['y'], m['z'], m['yaw_deg'])
-    img            = os.path.join(IMG_DIR, f"{mid}.jpg")
+    # Ruta PORTABLE (model://): Gazebo la resuelve via GZ_SIM_RESOURCE_PATH (que
+    # incluye el share de description). El file:// absoluto de rosendo apuntaba a
+    # /home/rosendorios/... y rompía en otras máquinas.
+    img            = f"model://description/textures/arucos/{mid}.jpg"
     roll           = math.pi
     pitch          = -math.pi / 2
     return (
@@ -50,7 +53,7 @@ def marker_sdf(m):
         f'          <material>\n'
         f'            <diffuse>1 1 1 1</diffuse>\n'
         f'            <pbr><metal>\n'
-        f'              <albedo_map>file://{img}</albedo_map>\n'
+        f'              <albedo_map>{img}</albedo_map>\n'
         f'              <metalness>0.0</metalness>\n'
         f'              <roughness>1.0</roughness>\n'
         f'            </metal></pbr>\n'
