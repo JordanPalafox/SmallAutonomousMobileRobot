@@ -24,32 +24,21 @@ IMG_DIR    = os.path.join(BASE, 'src', 'description', 'textures', 'arucos')
 
 MAP_W  = 3.65   # ancho E-W del mapa en coords ArUco [m]
 SIDE   = 0.09   # lado del marcador [m]
-# Empuje del marcador hacia ADENTRO (a lo largo de su normal) SOLO para los
-# muros del perímetro: sus coords (borde interno 3.65x4.85) caen en la cara
-# EXTERIOR del muro del modelo (grosor 0.03 m). Con INSET=0.03 el marcador queda
-# FLUSH en la cara interior (su trasera embebida en el muro -> desde afuera no se
-# ve el espejo de la cara trasera). Los racks NO se empujan (ya están en su cara).
-INSET  = 0.0    # paredes reescaladas a 3.65x4.85 -> marcadores caen en la cara interior
 THICK  = 0.003  # grosor visual [m]
 
 
-def aruco2gz(ax, ay, az, ayaw_deg, inset=0.0):
-    th     = math.radians(ayaw_deg)
-    # Normal de la cara en frame gz = (sin th, -cos th). Empuja `inset` hacia adentro.
-    gz_x   = ay + inset * math.sin(th)
-    gz_y   = (MAP_W - ax) - inset * math.cos(th)
+def aruco2gz(ax, ay, az, ayaw_deg):
+    gz_x   = ay
+    gz_y   = MAP_W - ax
     gz_z   = az
-    yaw_gz = th - math.pi / 2
+    yaw_gz = math.radians(ayaw_deg) - math.pi / 2
     return gz_x, gz_y, gz_z, yaw_gz
 
 
 def marker_sdf(m):
     mid            = m['id']
-    inset          = INSET if str(m.get('group', '')).startswith('wall') else 0.0
-    gx, gy, gz, yaw_gz = aruco2gz(m['x'], m['y'], m['z'], m['yaw_deg'], inset)
-    # Ruta portable via GZ_SIM_RESOURCE_PATH (share de description).
-    img            = f"model://description/textures/arucos/{mid}.jpg"
-    # Rotación de rosendo (la que funciona): cara horizontal + imagen derecha.
+    gx, gy, gz, yaw_gz = aruco2gz(m['x'], m['y'], m['z'], m['yaw_deg'])
+    img            = os.path.join(IMG_DIR, f"{mid}.jpg")
     roll           = math.pi
     pitch          = -math.pi / 2
     return (
@@ -61,7 +50,7 @@ def marker_sdf(m):
         f'          <material>\n'
         f'            <diffuse>1 1 1 1</diffuse>\n'
         f'            <pbr><metal>\n'
-        f'              <albedo_map>{img}</albedo_map>\n'
+        f'              <albedo_map>file://{img}</albedo_map>\n'
         f'              <metalness>0.0</metalness>\n'
         f'              <roughness>1.0</roughness>\n'
         f'            </metal></pbr>\n'

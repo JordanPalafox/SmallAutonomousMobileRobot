@@ -1,28 +1,33 @@
-# Marcadores ArUco del almacén — GEMELO DIGITAL (posiciones REALES medidas)
-# Mismas coords que perception/config/aruco_map.yaml:
-#   x=Este(+X), y=Norte(+Y), origen=esquina SW, yaw_deg = dirección a la que MIRA
-#   la cara (0=Este, 90=Norte, 180=Oeste, 270=Sur). z = altura del CENTRO [m].
-# Paredes del modelo reescaladas a 3.65x4.85 internas -> los marcadores caen en
-# la cara interior sin inset. add_arucos_to_world.py inserta los modelos.
-# Diccionario: DICT_ARUCO_ORIGINAL, lado = 9 cm.
+# Marcadores ArUco del almacén
+# Coords del mapa: x=Este, y=Norte, origen=esquina SW
+# yaw_deg: dirección a la que MIRA la cara (0=Este, 90=Norte, 180=Oeste, 270=Sur)
+# Diccionario: DICT_ARUCO_ORIGINAL, lado=9 cm
+# z=0.045 → base del marker tocando el suelo (center = SIDE/2)
 
 marker_side: 0.09
 
 markers:
-  # ── Paredes del perímetro ──
-  - {id:  5, x: 3.390, y: 3.969, z: 0.100, yaw_deg:   0.0, group: wall_este}
-  - {id: 21, x: 3.650, y: 0.790, z: 0.060, yaw_deg: 180.0, group: wall_este}
-  - {id:  7, x: 0.000, y: 4.515, z: 0.060, yaw_deg:   0.0, group: wall_oeste}
-  - {id: 37, x: 0.000, y: 0.950, z: 0.055, yaw_deg:   0.0, group: wall_oeste}
-  - {id: 13, x: 2.400, y: 4.850, z: 0.060, yaw_deg: 270.0, group: wall_norte}
-  - {id: 17, x: 0.505, y: 4.850, z: 0.080, yaw_deg: 270.0, group: wall_norte}
-  - {id: 22, x: 3.530, y: 0.000, z: 0.060, yaw_deg:  90.0, group: wall_sur}
-  - {id: 30, x: 1.620, y: 0.030, z: 0.045, yaw_deg:  90.0, group: wall_sur}
-  - {id: 38, x: 0.400, y: 0.070, z: 0.055, yaw_deg:  90.0, group: wall_sur}
-  # ── Costados de racks/obstáculos ──
-  - {id: 19, x: 1.270, y: 3.580, z: 0.045, yaw_deg:  90.0, group: rack_C1}
-  - {id: 41, x: 1.280, y: 2.520, z: 0.040, yaw_deg: 270.0, group: rack_C1}
-  - {id: 20, x: 2.400, y: 3.570, z: 0.040, yaw_deg:  90.0, group: rack_C2}
-  - {id: 25, x: 2.380, y: 2.500, z: 0.050, yaw_deg: 270.0, group: rack_C2}
-  - {id: 31, x: 1.360, y: 1.520, z: 0.065, yaw_deg: 180.0, group: rack_B}
-  - {id: 28, x: 2.420, y: 1.500, z: 0.050, yaw_deg:   0.0, group: rack_B}
+  # ── Paredes del edificio ──
+  # Pared Este (x=3.65): markers dentro, aruco_x levemente < 3.65
+  - {id:  5, x: 3.615, y: 3.980, z: 0.045, yaw_deg: 180.0, group: wall_este}
+  - {id: 21, x: 3.615, y: 0.790, z: 0.045, yaw_deg: 180.0, group: wall_este}
+  # Pared Oeste (x=0.00): markers dentro, aruco_x levemente > 0
+  - {id:  7, x: -0.005, y: 4.515, z: 0.045, yaw_deg:   0.0, group: wall_oeste}
+  - {id: 37, x: -0.005, y: 0.950, z: 0.045, yaw_deg:   0.0, group: wall_oeste}
+  # Pared Norte (y=4.85): markers dentro, aruco_y levemente < 4.85
+  - {id: 13, x: 3.280, y: 4.845, z: 0.045, yaw_deg: 270.0, group: wall_norte}
+  - {id: 17, x: 0.505, y: 4.845, z: 0.045, yaw_deg: 270.0, group: wall_norte}
+  # Pared Sur (y=0.00): markers DENTRO del edificio (~4 cm adentro del muro interior)
+  - {id: 22, x: 3.530, y: 0.040, z: 0.045, yaw_deg: 270.0, group: wall_sur}
+  - {id: 30, x: 1.620, y: 0.040, z: 0.045, yaw_deg: 270.0, group: wall_sur}
+  - {id: 38, x: 0.400, y: 0.040, z: 0.045, yaw_deg: 270.0, group: wall_sur}
+  # ── Paredes de racks ──
+  # C1: cara Norte y=3.78, cara Sur y=2.73 → markers 5mm afuera
+  - {id: 19, x: 1.170, y: 3.785, z: 0.045, yaw_deg: 270.0, group: rack_C1}
+  - {id: 41, x: 1.170, y: 2.725, z: 0.045, yaw_deg: 270.0, group: rack_C1}
+  # C2: mismas caras N/S, distinto aruco_x
+  - {id: 20, x: 2.400, y: 3.785, z: 0.045, yaw_deg: 270.0, group: rack_C2}
+  - {id: 25, x: 2.400, y: 2.725, z: 0.045, yaw_deg: 270.0, group: rack_C2}
+  # B: cara Oeste aruco_x=1.35, cara Este aruco_x=2.40 → markers 5mm afuera
+  - {id: 31, x: 1.345, y: 1.520, z: 0.045, yaw_deg: 180.0, group: rack_B}
+  - {id: 28, x: 2.405, y: 1.500, z: 0.045, yaw_deg:   0.0, group: rack_B}

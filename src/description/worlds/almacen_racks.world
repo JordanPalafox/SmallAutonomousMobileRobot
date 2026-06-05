@@ -16,14 +16,14 @@
         <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
     </link></model>
     <model name="pared_oeste"><static>true</static>
-      <pose>2.4400 3.6650 0.2050 0 0 0</pose>
+      <pose>2.4400 3.6750 0.2050 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry>
           <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
       </link></model>
     <model name="pared_este"><static>true</static>
-      <pose>2.4400 -0.0150 0.2050 0 0 0</pose>
+      <pose>2.4400 0.0150 0.2050 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>4.8800 0.0300 0.4100</size></box></geometry>
@@ -37,7 +37,7 @@
           <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
       </link></model>
     <model name="pared_sur_a"><static>true</static>
-      <pose>-0.0150 0.1750 0.2050 0 0 0</pose>
+      <pose>0.0150 0.1750 0.2050 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>0.0300 0.3500 0.4100</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>0.0300 0.3500 0.4100</size></box></geometry>
@@ -72,7 +72,7 @@
           <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
       </link></model>
     <model name="pared_sur_b"><static>true</static>
-      <pose>-0.0150 0.7950 0.2050 0 0 0</pose>
+      <pose>0.0150 0.7950 0.2050 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry>
@@ -107,7 +107,7 @@
           <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
       </link></model>
     <model name="pared_sur_c"><static>true</static>
-      <pose>-0.0150 1.3150 0.2050 0 0 0</pose>
+      <pose>0.0150 1.3150 0.2050 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>0.0300 0.1500 0.4100</size></box></geometry>
@@ -142,7 +142,7 @@
           <material><ambient>0.55 0.50 0.40 1</ambient><diffuse>0.55 0.50 0.40 1</diffuse></material></visual>
       </link></model>
     <model name="pared_sur_d"><static>true</static>
-      <pose>-0.0150 2.0250 0.2050 0 0 0</pose>
+      <pose>0.0150 2.0250 0.2050 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>0.0300 0.5300 0.4100</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>0.0300 0.5300 0.4100</size></box></geometry>
@@ -156,7 +156,7 @@
           <material><ambient>0.45 0.45 0.45 1</ambient><diffuse>0.45 0.45 0.45 1</diffuse></material></visual>
       </link></model>
     <model name="pared_sur_e"><static>true</static>
-      <pose>-0.0150 3.3900 0.2050 0 0 0</pose>
+      <pose>0.0150 3.3900 0.2050 0 0 0</pose>
       <link name="link">
         <collision name="col"><geometry><box><size>0.0300 0.6000 0.4100</size></box></geometry></collision>
         <visual name="vis"><geometry><box><size>0.0300 0.6000 0.4100</size></box></geometry>
@@ -777,14 +777,14 @@
         </collision>
       </link></model>
     <model name="aruco_5"><static>true</static>
-      <pose>3.9690 0.2600 0.1000 3.14159 -1.57080 -1.57080</pose>
+      <pose>3.9800 0.0350 0.0450 3.14159 -1.57080 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/5.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/5.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -795,14 +795,14 @@
         </collision>
       </link></model>
     <model name="aruco_21"><static>true</static>
-      <pose>0.7900 0.0000 0.0600 3.14159 -1.57080 1.57080</pose>
+      <pose>0.7900 0.0350 0.0450 3.14159 -1.57080 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/21.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/21.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -813,14 +813,14 @@
         </collision>
       </link></model>
     <model name="aruco_7"><static>true</static>
-      <pose>4.5150 3.6500 0.0600 3.14159 -1.57080 -1.57080</pose>
+      <pose>4.5150 3.6550 0.0450 3.14159 -1.57080 -1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/7.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/7.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -831,14 +831,14 @@
         </collision>
       </link></model>
     <model name="aruco_37"><static>true</static>
-      <pose>0.9500 3.6500 0.0550 3.14159 -1.57080 -1.57080</pose>
+      <pose>0.9500 3.6550 0.0450 3.14159 -1.57080 -1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/37.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/37.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -849,14 +849,14 @@
         </collision>
       </link></model>
     <model name="aruco_13"><static>true</static>
-      <pose>4.8500 1.2500 0.0600 3.14159 -1.57080 3.14159</pose>
+      <pose>4.8450 0.3700 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/13.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/13.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -867,14 +867,14 @@
         </collision>
       </link></model>
     <model name="aruco_17"><static>true</static>
-      <pose>4.8500 3.1450 0.0800 3.14159 -1.57080 3.14159</pose>
+      <pose>4.8450 3.1450 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/17.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/17.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -885,14 +885,14 @@
         </collision>
       </link></model>
     <model name="aruco_22"><static>true</static>
-      <pose>0.0000 0.1200 0.0600 3.14159 -1.57080 0.00000</pose>
+      <pose>0.0400 0.1200 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/22.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/22.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -903,14 +903,14 @@
         </collision>
       </link></model>
     <model name="aruco_30"><static>true</static>
-      <pose>0.0300 2.0300 0.0450 3.14159 -1.57080 0.00000</pose>
+      <pose>0.0400 2.0300 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/30.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/30.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -921,14 +921,14 @@
         </collision>
       </link></model>
     <model name="aruco_38"><static>true</static>
-      <pose>0.0700 3.2500 0.0550 3.14159 -1.57080 0.00000</pose>
+      <pose>0.0400 3.2500 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/38.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/38.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -939,14 +939,14 @@
         </collision>
       </link></model>
     <model name="aruco_19"><static>true</static>
-      <pose>3.5800 2.3800 0.0450 3.14159 -1.57080 0.00000</pose>
+      <pose>3.7850 2.4800 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/19.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/19.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -957,14 +957,14 @@
         </collision>
       </link></model>
     <model name="aruco_41"><static>true</static>
-      <pose>2.5200 2.3700 0.0400 3.14159 -1.57080 3.14159</pose>
+      <pose>2.7250 2.4800 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/41.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/41.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -975,14 +975,14 @@
         </collision>
       </link></model>
     <model name="aruco_20"><static>true</static>
-      <pose>3.5700 1.2500 0.0400 3.14159 -1.57080 0.00000</pose>
+      <pose>3.7850 1.2500 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/20.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/20.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -993,14 +993,14 @@
         </collision>
       </link></model>
     <model name="aruco_25"><static>true</static>
-      <pose>2.5000 1.2700 0.0500 3.14159 -1.57080 3.14159</pose>
+      <pose>2.7250 1.2500 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/25.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/25.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -1011,14 +1011,14 @@
         </collision>
       </link></model>
     <model name="aruco_31"><static>true</static>
-      <pose>1.5200 2.2900 0.0650 3.14159 -1.57080 1.57080</pose>
+      <pose>1.5200 2.3050 0.0450 3.14159 -1.57080 1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/31.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/31.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -1029,14 +1029,14 @@
         </collision>
       </link></model>
     <model name="aruco_28"><static>true</static>
-      <pose>1.5000 1.2300 0.0500 3.14159 -1.57080 -1.57080</pose>
+      <pose>1.5000 1.2450 0.0450 3.14159 -1.57080 -1.57080</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/28.jpg</albedo_map>
+              <albedo_map>file:///home/rosendorios/Puzzlebot-Challenge-/scripts/../src/description/textures/arucos/28.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
