@@ -4,6 +4,9 @@
   <!-- Arguments -->
   <xacro:arg name="is_ignition" default="true"/>
   <xacro:arg name="is_sim" default="true"/>
+  <!-- use_gz_control=false → robot SOLO-VISUAL (sin plugin ros2_control): para el
+       gemelo-espejo, donde la pose se fija desde el robot real, no por físicas. -->
+  <xacro:arg name="use_gz_control" default="true"/>
 
   <!-- LiDAR is mounted rear-facing on the real robot (cable toward back).
        Rotate 180° in real mode so the scan aligns with +X forward. -->
@@ -12,8 +15,10 @@
   <!-- Include Gazebo plugins -->
   <xacro:include filename="$(find description)/urdf/puzzlebot_gazebo.xacro" />
 
-  <!-- Include ros2_control -->
-  <xacro:include filename="$(find description)/urdf/puzzlebot_ros2_control.xacro" />
+  <!-- Include ros2_control (omitido en modo solo-visual / gemelo-espejo) -->
+  <xacro:if value="$(arg use_gz_control)">
+    <xacro:include filename="$(find description)/urdf/puzzlebot_ros2_control.xacro" />
+  </xacro:if>
 
   <!-- ==================== PROPERTIES ==================== -->
   <xacro:property name="wheel_radius"    value="0.05"/>

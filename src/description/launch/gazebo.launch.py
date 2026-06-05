@@ -9,6 +9,7 @@ from launch.actions import (
     DeclareLaunchArgument, ExecuteProcess, SetEnvironmentVariable, TimerAction
 )
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.conditions import IfCondition, UnlessCondition
 
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -40,6 +41,14 @@ def generate_launch_description():
         default_value="empty"
     )
 
+    mirror_arg = DeclareLaunchArgument(
+        name="mirror",
+        default_value="false",
+        description="true = gemelo-espejo: robot solo-visual, su pose la fija "
+                    "gemelo_mirror desde /slam_pose del robot real (sin ros2_control "
+                    "ni controladores).",
+    )
+
     world_path = PathJoinSubstitution([
         puzzlebot_description,
         "worlds",
@@ -61,11 +70,18 @@ def generate_launch_description():
     ros_distro = os.environ["ROS_DISTRO"]
     is_ignition = "True" if ros_distro == "humble" else "False"
 
+    # mirror=true → gemelo-espejo: robot SOLO-VISUAL (sin ros2_control) cuya pose
+    # la fija gemelo_mirror desde el robot real. mirror=false → sim normal.
+    mirror = LaunchConfiguration("mirror")
+    use_gz_control = PythonExpression(
+        ["'false' if '", mirror, "' == 'true' else 'true'"])
+
     robot_description = ParameterValue(
         Command([
             "xacro ",
             LaunchConfiguration("model"),
-            " is_ignition:=", is_ignition
+            " is_ignition:=", is_ignition,
+            " use_gz_control:=", use_gz_control,
         ]),
         value_type=str
     )
@@ -181,6 +197,7 @@ def generate_launch_description():
         ],
         remappings=[("/imu", "/imu/out")],
         additional_env={"IGN_IP": "127.0.0.1"},
+        condition=UnlessCondition(mirror),
     )
 
     # Fallback joint_state_publisher: publishes zero-position joint states so
@@ -202,6 +219,7 @@ def generate_launch_description():
     # gz_ros2_control before configure — staggering avoids ok=False configure failure.
     jsb_spawner = TimerAction(
         period=12.0,
+        condition=UnlessCondition(mirror),
         actions=[
             Node(
                 package="controller_manager",
@@ -214,6 +232,7 @@ def generate_launch_description():
 
     diff_drive_spawner = TimerAction(
         period=18.0,
+        condition=UnlessCondition(mirror),
         actions=[
             Node(
                 package="controller_manager",
@@ -236,11 +255,23 @@ def generate_launch_description():
         executable="relay",
         arguments=["/cmd_vel_in", "/puzzlebot_controller/cmd_vel_unstamped"],
         output="screen",
+        condition=UnlessCondition(mirror),
+    )
+
+    # Gemelo-espejo: copia /slam_pose del robot real a la pose del modelo en Gazebo.
+    gemelo_mirror_node = Node(
+        package="controller",
+        executable="gemelo_mirror",
+        name="gemelo_mirror",
+        parameters=[{"world_name": LaunchConfiguration("world_name")}],
+        condition=IfCondition(mirror),
+        output="screen",
     )
 
     return LaunchDescription([
         model_arg,
         world_name_arg,
+        mirror_arg,
         gz_resource_path,
         ign_resource_path,
         # NOTE: gl_software (LIBGL_ALWAYS_SOFTWARE=1) is intentionally NOT added
@@ -258,4 +289,5 @@ def generate_launch_description():
         jsb_spawner,
         diff_drive_spawner,
         cmd_vel_relay,
+        gemelo_mirror_node,
     ])
