@@ -175,6 +175,9 @@ public:
     aruco_snap_tol_th_ = declare_parameter("aruco_snap_tol_theta", 0.15); // rad
     aruco_seed_sxy_ = declare_parameter("aruco_seed_sigma_xy", 0.20);   // m
     aruco_seed_sth_ = declare_parameter("aruco_seed_sigma_theta", 0.10); // rad
+    // Localizacion global: el primer ArUco fija la pose -> el robot se puede
+    // colocar en cualquier lado/angulo sin configurar initial_x/y/theta.
+    aruco_global_init_ = declare_parameter("aruco_global_init", true);
 
     grid_ = std::make_unique<slam::OccupancyGrid>(mapw_, maph_, res_, l_occ, l_free,
                                                   l_min, l_max, dl_occ, dl_free, occ_stop);
@@ -678,7 +681,13 @@ private:
     double x = m->pose.pose.position.x, y = m->pose.pose.position.y;
     double th = yawFromQuat(m->pose.pose.orientation);
 
-    if (std::hypot(x - sx_, y - sy_) < aruco_snap_tol_ &&
+    // Localizacion GLOBAL: el PRIMER ArUco visto fija la pose absoluta sin
+    // importar donde/como se coloco el robot (no depende de initial_x/y/theta).
+    // Hasta ese primer fix la pose del SLAM no es de fiar.
+    const bool first_fix = aruco_global_init_ && !aruco_localized_;
+
+    if (!first_fix &&
+        std::hypot(x - sx_, y - sy_) < aruco_snap_tol_ &&
         std::abs(wrap(th - sth_)) < aruco_snap_tol_th_)
       return;  // ya estamos donde dice el ArUco → deja que el scan trabaje
 
@@ -686,8 +695,14 @@ private:
     amcl_->initGaussian(sx_, sy_, sth_, aruco_seed_sxy_, aruco_seed_sth_);
     Pose2 t = compose({sx_, sy_, sth_}, inverse({ox_, oy_, oth_}));
     tf_x_ = t.x; tf_y_ = t.y; tf_th_ = t.th;
-    RCLCPP_INFO(get_logger(), "Reposicionado por ArUco en (%.2f, %.2f, %.1f°)",
-                x, y, th * 180.0 / M_PI);
+    if (first_fix) {
+      aruco_localized_ = true;
+      RCLCPP_INFO(get_logger(), "Localización global inicial por ArUco: (%.2f, %.2f, %.1f°)",
+                  x, y, th * 180.0 / M_PI);
+    } else {
+      RCLCPP_INFO(get_logger(), "Reposicionado por ArUco en (%.2f, %.2f, %.1f°)",
+                  x, y, th * 180.0 / M_PI);
+    }
   }
 
   void onReset(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
@@ -852,6 +867,7 @@ private:
   bool aruco_en_=true;
   double aruco_snap_tol_=0.15, aruco_snap_tol_th_=0.15;
   double aruco_seed_sxy_=0.20, aruco_seed_sth_=0.10;
+  bool aruco_global_init_=true, aruco_localized_=false;
 
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;

@@ -142,6 +142,10 @@ slam_node:
     aruco_snap_tol_theta:       0.15    # rad — desvío angular mínimo
     aruco_seed_sigma_xy:        0.20    # m   — dispersión al re-sembrar (deja que el láser afine)
     aruco_seed_sigma_theta:     0.10    # rad
+    # Localización global: el PRIMER ArUco visto fija la pose absoluta, así el
+    # robot se puede colocar en cualquier lugar/ángulo sin configurar
+    # initial_x/y/theta. Debe ver un marcador al arrancar (gíralo si hace falta).
+    aruco_global_init:          true
 
     # ── Initial pose (world frame) ───────────────────────────────
     initial_x:                  0.0
