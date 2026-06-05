@@ -38,7 +38,7 @@ def aruco2gz(ax, ay, az, ayaw_deg):
     gz_x   = ay + INSET * math.sin(th)
     gz_y   = (MAP_W - ax) - INSET * math.cos(th)
     gz_z   = az
-    yaw_gz = th - math.pi / 2
+    yaw_gz = th
     return gz_x, gz_y, gz_z, yaw_gz
 
 
@@ -48,8 +48,10 @@ def marker_sdf(m):
     # Ruta portable: Gazebo la resuelve via GZ_SIM_RESOURCE_PATH (que incluye
     # el share de 'description'), tanto en árbol fuente como instalado.
     img            = f"model://description/textures/arucos/{mid}.jpg"
-    roll           = math.pi
-    pitch          = -math.pi / 2
+    # Marcador VERTICAL con imagen derecha: cara (Z local) -> normal horizontal,
+    # arriba (Y local) -> +Z mundo.  roll=pi/2, pitch=0, yaw=yaw_gz (=yaw_deg).
+    roll           = math.pi / 2
+    pitch          = 0.0
     return (
         f'    <model name="aruco_{mid}"><static>true</static>\n'
         f'      <pose>{gx:.4f} {gy:.4f} {gz:.4f} {roll:.5f} {pitch:.5f} {yaw_gz:.5f}</pose>\n'
