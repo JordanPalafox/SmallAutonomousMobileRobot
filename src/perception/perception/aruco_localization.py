@@ -178,12 +178,12 @@ class ArucoLocalizationNode(Node):
         # cam_pitch_deg: inclinacion hacia ABAJO de la camara [grados].
         #   Markers en MURO (verticales) -> camara casi horizontal (0).
         #   AJUSTAR al montaje real.
-        self.declare_parameter('cam_xyz', [0.10, 0.0, 0.07])
+        self.declare_parameter('cam_xyz', [0.10, 0.0, 0.16])  # camara frontal, 16 cm del piso
         self.declare_parameter('cam_pitch_deg', 0.0)
         self.declare_parameter('cam_yaw_deg', 0.0)   # desalineacion lateral, normalmente 0
 
         # ---- Filtrado / fusion ----
-        self.declare_parameter('max_range', 1.5)        # m; descarta markers mas lejanos
+        self.declare_parameter('max_range', 2.0)        # m; descarta markers mas lejanos
         self.declare_parameter('min_markers', 1)        # detecciones minimas para publicar
         self.declare_parameter('xy_std_base', 0.03)     # m, ruido base a 1 m
         self.declare_parameter('yaw_std_base_deg', 3.0)  # grados, ruido base a 1 m

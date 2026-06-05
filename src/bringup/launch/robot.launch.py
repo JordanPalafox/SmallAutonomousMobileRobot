@@ -302,6 +302,7 @@ def generate_launch_description():
             'marker_length':  0.09,
             'dictionary':     'original',
             'map_frame':      'map',
+            'cam_xyz':        [0.10, 0.0, 0.16],   # cámara frontal, 16 cm del piso
             'cam_pitch_deg':  ParameterValue(LaunchConfiguration('aruco_cam_pitch_deg'), value_type=float),
             # El robot arranca en el CENTRO de la pista (origen del frame `map`
             # del SLAM) y los ArUco se midieron desde la esquina (0,0), así que
