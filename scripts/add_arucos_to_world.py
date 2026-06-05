@@ -29,7 +29,7 @@ SIDE   = 0.09   # lado del marcador [m]
 # EXTERIOR del muro del modelo (grosor 0.03 m). Con INSET=0.03 el marcador queda
 # FLUSH en la cara interior (su trasera embebida en el muro -> desde afuera no se
 # ve el espejo de la cara trasera). Los racks NO se empujan (ya están en su cara).
-INSET  = 0.03
+INSET  = 0.0    # paredes reescaladas a 3.65x4.85 -> marcadores caen en la cara interior
 THICK  = 0.003  # grosor visual [m]
 
 
