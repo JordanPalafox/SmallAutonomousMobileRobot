@@ -24,14 +24,21 @@ IMG_DIR    = os.path.join(BASE, 'src', 'description', 'textures', 'arucos')
 
 MAP_W  = 3.65   # ancho E-W del mapa en coords ArUco [m]
 SIDE   = 0.09   # lado del marcador [m]
+# Empuje del marcador hacia ADENTRO de la pista (a lo largo de su normal) para
+# que quede pegado a la cara INTERIOR del muro y no lo atraviese (las coords
+# medidas son del borde interno 3.65x4.85, pero el muro del modelo tiene grosor
+# ~0.03 m, así que el borde cae en la cara exterior). 0.04 m libra el muro.
+INSET  = 0.04
 THICK  = 0.003  # grosor visual [m]
 
 
 def aruco2gz(ax, ay, az, ayaw_deg):
-    gz_x   = ay
-    gz_y   = MAP_W - ax
+    th     = math.radians(ayaw_deg)
+    # Normal de la cara en frame gz = (sin th, -cos th). Empuja INSET hacia adentro.
+    gz_x   = ay + INSET * math.sin(th)
+    gz_y   = (MAP_W - ax) - INSET * math.cos(th)
     gz_z   = az
-    yaw_gz = math.radians(ayaw_deg) - math.pi / 2
+    yaw_gz = th - math.pi / 2
     return gz_x, gz_y, gz_z, yaw_gz
 
 
