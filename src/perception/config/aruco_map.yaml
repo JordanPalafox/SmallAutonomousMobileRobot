@@ -1,25 +1,30 @@
 # =============================================================================
 # Mapa de marcadores ArUco de localizacion
 # =============================================================================
-# Posicion CONOCIDA de cada marker fijo en el piso, en el frame `map`.
-# La capa de localizacion (aruco_localization) usa esto para deducir la pose
-# del robot a partir de los markers que ve la camara.
+# Frame `map` (REP-103): X adelante, Y izquierda, Z arriba.
+# Markers VERTICALES (en muros / costados de obstaculos, mirando hacia la pista):
+#   x, y      -> posicion del CENTRO del marker [metros]
+#   z         -> altura del CENTRO sobre el piso [metros]
+#   yaw_deg   -> direccion a la que MIRA la cara (su normal) [grados]
+#                0 = mira +X, 90 = +Y, 180 = -X, 270 = -Y
+#   mount     -> wall (vertical) | floor (plano)
 #
-# Convencion (REP-103): frame `map` con X adelante, Y a la izquierda, Z arriba.
-# Cada marker esta PLANO en el piso (z = 0, mirando hacia arriba).
-#   x, y       -> posicion del CENTRO del marker en el piso [metros]
-#   theta_deg  -> giro del marker alrededor del eje Z del mapa [grados]
-#
-# Llena esto con la GUI:  python3 src/perception/tools/aruco_map_editor.py
-# (eliges el ID, haces click en el plano, Guardar -> reescribe este archivo).
-#
-# IDs disponibles (20, del PDF): 5 7 13 17 19 20 21 22 23 25 26 27 28 29 30 31 37 38 39 41
-# Diccionario: DICT_ARUCO_ORIGINAL (rejilla 5x5) | Tamano: 9 cm de lado
-# Pista: 3.67 (X) x 4.85 (Y) m
+# Editar con la GUI:  python3 src/perception/tools/aruco_map_editor.py
+# Diccionario: DICT_ARUCO_ORIGINAL (5x5) | Tamano: 9 cm | Pista 3.65 x 4.85 m
 # =============================================================================
 
-track: {x: 3.670, y: 4.850}
+track: {x: 3.65, y: 4.85}
 
-# Vacio: coloca los marcadores con la GUI. Quedaran asi:
-#   - {id: 5, x: 1.230, y: 3.400, theta_deg: 90.0}
-markers: []
+markers:
+  - {id: 7,  x: 0.000, y: 4.515, z: 0.600, yaw_deg: 0.0,   mount: wall}
+  - {id: 17, x: 0.505, y: 4.850, z: 0.800, yaw_deg: 270.0, mount: wall}
+  - {id: 19, x: 1.270, y: 3.580, z: 0.450, yaw_deg: 90.0,  mount: wall}
+  - {id: 21, x: 3.650, y: 0.790, z: 0.600, yaw_deg: 180.0, mount: wall}
+  - {id: 22, x: 3.530, y: 0.000, z: 0.500, yaw_deg: 90.0,  mount: wall}
+  - {id: 25, x: 2.380, y: 2.500, z: 0.500, yaw_deg: 270.0, mount: wall}
+  - {id: 28, x: 2.420, y: 1.500, z: 0.500, yaw_deg: 0.0,   mount: wall}
+  - {id: 30, x: 1.620, y: 0.000, z: 0.450, yaw_deg: 90.0,  mount: wall}
+  - {id: 31, x: 1.360, y: 1.520, z: 0.650, yaw_deg: 180.0, mount: wall}
+  - {id: 37, x: 0.000, y: 0.950, z: 0.550, yaw_deg: 0.0,   mount: wall}
+  - {id: 38, x: 0.400, y: 0.000, z: 0.550, yaw_deg: 90.0,  mount: wall}
+  - {id: 41, x: 1.280, y: 2.520, z: 0.400, yaw_deg: 270.0, mount: wall}

@@ -42,14 +42,16 @@ def _read_map() -> dict:
     raw = data.get('markers', []) if isinstance(data, dict) else (data or [])
     markers = []
     for m in raw:
-        theta = m.get('theta_deg')
-        if theta is None and 'theta' in m:
-            theta = math.degrees(float(m['theta']))
+        yaw = m.get('yaw_deg', m.get('theta_deg'))
+        if yaw is None and 'theta' in m:
+            yaw = math.degrees(float(m['theta']))
         markers.append({
             'id': int(m['id']),
             'x': float(m['x']),
             'y': float(m['y']),
-            'theta_deg': float(theta or 0.0),
+            'z': float(m.get('z', 0.10)),
+            'yaw_deg': float(yaw or 0.0),
+            'mount': str(m.get('mount', 'wall')),
         })
     track = data.get('track', {'x': 3.67, 'y': 4.85}) if isinstance(data, dict) else {'x': 3.67, 'y': 4.85}
     obstacles = data.get('obstacles', []) if isinstance(data, dict) else []
@@ -67,8 +69,10 @@ def _write_map(payload: dict) -> None:
         '# Mapa de marcadores ArUco de localizacion  (editado con aruco_map_editor)',
         '# =============================================================================',
         '# Frame `map` (REP-103): X adelante, Y izquierda, Z arriba.',
-        '# Cada marker esta PLANO en el piso (z=0). x,y = centro [m]; theta_deg = giro',
-        '# alrededor de Z del mapa [grados]. Diccionario DICT_ARUCO_ORIGINAL (5x5), 9 cm.',
+        '# Markers VERTICALES (en muros / costados de obstaculos). x,y = centro [m];',
+        '# z = altura del centro sobre el piso [m]; yaw_deg = direccion a la que MIRA',
+        '# la cara (su normal) [grados]; mount = wall (vertical) | floor (plano).',
+        '# Diccionario DICT_ARUCO_ORIGINAL (5x5), lado 9 cm.',
         '# =============================================================================',
         '',
         f'track: {{x: {float(track["x"]):.3f}, y: {float(track["y"]):.3f}}}',
@@ -78,7 +82,9 @@ def _write_map(payload: dict) -> None:
     for m in markers:
         lines.append(
             f'  - {{id: {int(m["id"])}, x: {float(m["x"]):.3f}, '
-            f'y: {float(m["y"]):.3f}, theta_deg: {float(m.get("theta_deg", 0.0)):.1f}}}'
+            f'y: {float(m["y"]):.3f}, z: {float(m.get("z", 0.10)):.3f}, '
+            f'yaw_deg: {float(m.get("yaw_deg", 0.0)):.1f}, '
+            f'mount: {str(m.get("mount", "wall"))}}}'
         )
     if obstacles:
         lines += ['', '# Solo referencia visual; aruco_localization los ignora.', 'obstacles:']

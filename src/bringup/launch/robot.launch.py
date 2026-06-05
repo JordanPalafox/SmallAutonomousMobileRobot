@@ -165,9 +165,10 @@ def generate_launch_description():
         'aruco', default_value='true',
         description='Run aruco_localization (floor ArUco re-localisation).')
     aruco_pitch_arg = DeclareLaunchArgument(
-        'aruco_cam_pitch_deg', default_value='30.0',
-        description='Inclinación hacia abajo de la cámara [grados]. MEDIR en el '
-                    'montaje real: sin tilt la cámara no ve los marcadores del piso.')
+        'aruco_cam_pitch_deg', default_value='0.0',
+        description='Inclinación hacia abajo de la cámara [grados]. Markers en '
+                    'MURO (verticales) → cámara casi horizontal (0). MEDIR en el '
+                    'montaje real.')
 
     laser_frame_bridge = Node(
         package='tf2_ros',
@@ -302,6 +303,10 @@ def generate_launch_description():
             'dictionary':     'original',
             'map_frame':      'map',
             'cam_pitch_deg':  ParameterValue(LaunchConfiguration('aruco_cam_pitch_deg'), value_type=float),
+            # El robot arranca en el CENTRO de la pista (origen del frame `map`
+            # del SLAM) y los ArUco se midieron desde la esquina (0,0), así que
+            # el origen del aruco_map en `map` = -(ancho/2, alto/2) de 3.65x4.85.
+            'aruco_origin_in_map': [-1.825, -2.425, 0.0],
             'publish_debug_image': True,
         }],
         condition=IfCondition(LaunchConfiguration('aruco')),

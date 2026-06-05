@@ -7,11 +7,16 @@ aruco_localization:
     marker_length: 0.09          # 9 cm de lado (DICT_ARUCO_ORIGINAL 5x5)
     dictionary: original          # DICT_ARUCO_ORIGINAL
     map_frame: map
+    # Origen del aruco_map.yaml dentro del frame `map` del SLAM [x, y, yaw_deg].
+    # Robot arranca en el CENTRO de la pista 3.65x4.85, ArUco medidos desde la
+    # esquina (0,0) -> origen = -(3.65/2, 4.85/2).
+    aruco_origin_in_map: [-1.825, -2.425, 0.0]
 
     # --- Extrinsecos de camara (frame OPTICO en base_link) ---
     # AJUSTAR al montaje fisico real del robot.
+    # Markers en MURO (verticales) -> camara casi horizontal (pitch ~ 0).
     cam_xyz: [0.10, 0.0, 0.07]    # origen optico en base_link [m]
-    cam_pitch_deg: 30.0           # inclinacion hacia ABAJO [grados]
+    cam_pitch_deg: 0.0            # inclinacion hacia ABAJO [grados]
     cam_yaw_deg: 0.0
 
     # --- Filtrado / fusion ---

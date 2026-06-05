@@ -97,17 +97,43 @@ def _load_camera_yaml(path: str) -> tuple[np.ndarray, np.ndarray]:
     return K, dist
 
 
+def _marker_rotation(yaw: float, mount: str) -> np.ndarray:
+    """Rotacion R_map_marker segun el montaje.
+
+    Convencion ArUco del marker: X derecha, Y arriba, Z saliendo de la cara
+    hacia el observador.
+
+    mount='wall' (VERTICAL, en muro/costado de obstaculo): la cara mira en
+        horizontal. `yaw` = direccion de la NORMAL del marker (hacia donde
+        apunta su cara) en el plano XY del mapa.
+            Z_marker = (cos yaw, sin yaw, 0)   (normal, horizontal)
+            Y_marker = (0, 0, 1)               (arriba del mundo)
+            X_marker = Y x Z = (-sin yaw, cos yaw, 0)
+    mount='floor' (PLANO en el piso): Z_marker = +Z del mapa (arriba),
+        `yaw` = giro alrededor de Z.
+    """
+    if mount == 'floor':
+        return _rot_z(yaw)
+    cf, sf = math.cos(yaw), math.sin(yaw)
+    return np.array([[-sf, 0.0, cf],
+                     [ cf, 0.0, sf],
+                     [0.0, 1.0, 0.0]], dtype=np.float64)
+
+
 def _load_aruco_map(path: str) -> Dict[int, np.ndarray]:
     """Lee aruco_map.yaml -> {id: T_map_marker (4x4)}.
 
-    Cada marker esta PLANO en el piso (z=0): su frame tiene Z = +Z del mapa
-    (arriba) y theta = giro alrededor de Z del mapa. Acepta theta en grados
-    (theta_deg) o radianes (theta).
+    Campos por marker:
+        id, x, y         posicion del centro del marker [m]
+        z                altura del centro sobre el piso [m] (clave en muro)
+        yaw_deg          direccion a la que MIRA el marker (normal) [grados]
+                         (alias aceptados: theta_deg en grados, theta en rad)
+        mount            'wall' (vertical, default) | 'floor' (plano)
     """
     with open(path, 'r', encoding='utf-8') as f:
         data = yaml.safe_load(f)
     markers = data.get('markers', data) if isinstance(data, dict) else data
-    # Acepta lista [{id, x, y, theta_deg}, ...] o dict {id: {x, y, ...}, ...}.
+    # Acepta lista [{id, x, y, ...}, ...] o dict {id: {x, y, ...}, ...}.
     if isinstance(markers, dict):
         items = [dict(m, id=m.get('id', k)) for k, m in markers.items()]
     else:
@@ -117,12 +143,15 @@ def _load_aruco_map(path: str) -> Dict[int, np.ndarray]:
         mid = int(m['id'])
         x = float(m['x'])
         y = float(m['y'])
-        z = float(m.get('z', 0.0))
-        if 'theta_deg' in m:
-            theta = math.radians(float(m['theta_deg']))
+        z = float(m.get('z', 0.10))
+        if 'yaw_deg' in m:
+            yaw = math.radians(float(m['yaw_deg']))
+        elif 'theta_deg' in m:
+            yaw = math.radians(float(m['theta_deg']))
         else:
-            theta = float(m.get('theta', 0.0))
-        out[mid] = _make_tf(_rot_z(theta), [x, y, z])
+            yaw = float(m.get('theta', 0.0))
+        mount = str(m.get('mount', 'wall')).lower()
+        out[mid] = _make_tf(_marker_rotation(yaw, mount), [x, y, z])
     return out
 
 
@@ -138,13 +167,19 @@ class ArucoLocalizationNode(Node):
         self.declare_parameter('marker_length', 0.09)
         self.declare_parameter('dictionary', 'original')
         self.declare_parameter('map_frame', 'map')
+        # Pose del ORIGEN del aruco_map.yaml dentro del frame `map` del SLAM
+        # [x, y, yaw_deg]. Sirve cuando mediste los ArUco desde una esquina
+        # pero el SLAM tiene su origen en otro punto (p.ej. el robot arranca en
+        # el CENTRO de la pista -> origen = -(ancho/2, alto/2)).
+        self.declare_parameter('aruco_origin_in_map', [0.0, 0.0, 0.0])
 
         # ---- Extrinsecos camara (frame OPTICO en base_link) ----
         # cam_xyz: origen del frame optico de la camara en base_link [m].
         # cam_pitch_deg: inclinacion hacia ABAJO de la camara [grados].
-        #   AJUSTAR al montaje real; sin tilt la camara no ve el piso.
+        #   Markers en MURO (verticales) -> camara casi horizontal (0).
+        #   AJUSTAR al montaje real.
         self.declare_parameter('cam_xyz', [0.10, 0.0, 0.07])
-        self.declare_parameter('cam_pitch_deg', 30.0)
+        self.declare_parameter('cam_pitch_deg', 0.0)
         self.declare_parameter('cam_yaw_deg', 0.0)   # desalineacion lateral, normalmente 0
 
         # ---- Filtrado / fusion ----
@@ -196,6 +231,18 @@ class ArucoLocalizationNode(Node):
                 raise SystemExit(1)
         K, dist = _load_camera_yaml(cam_path)
         self._map = _load_aruco_map(map_path)
+
+        # Reubica el mapa ArUco al frame `map` del SLAM (si el origen difiere).
+        origin = [float(v) for v in self.get_parameter('aruco_origin_in_map').value]
+        o_x = origin[0] if len(origin) > 0 else 0.0
+        o_y = origin[1] if len(origin) > 1 else 0.0
+        o_yaw = math.radians(origin[2]) if len(origin) > 2 else 0.0
+        if abs(o_x) > 1e-9 or abs(o_y) > 1e-9 or abs(o_yaw) > 1e-9:
+            T_pre = _make_tf(_rot_z(o_yaw), [o_x, o_y, 0.0])
+            self._map = {mid: T_pre @ T for mid, T in self._map.items()}
+            self.get_logger().info(
+                f'aruco_map reubicado: origen en map=({o_x:.3f}, {o_y:.3f}, '
+                f'{math.degrees(o_yaw):.1f}deg)')
 
         self._detector = ArucoDetector(
             camera_matrix=K, dist_coeffs=dist,
