@@ -784,7 +784,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/5.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/5_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -802,7 +802,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/21.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/21_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -892,7 +892,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/22.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/22_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -910,7 +910,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/30.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/30_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -928,7 +928,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/38.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/38_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -946,7 +946,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/19.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/19_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -982,7 +982,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/20.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/20_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -1018,7 +1018,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/31.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/31_flip.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>

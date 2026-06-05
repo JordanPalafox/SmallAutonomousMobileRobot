@@ -47,9 +47,12 @@ def marker_sdf(m):
     mid            = m['id']
     inset          = INSET if str(m.get('group', '')).startswith('wall') else 0.0
     gx, gy, gz, yaw_gz = aruco2gz(m['x'], m['y'], m['z'], m['yaw_deg'], inset)
-    # Ruta portable: Gazebo la resuelve via GZ_SIM_RESOURCE_PATH (que incluye
-    # el share de 'description'), tanto en árbol fuente como instalado.
-    img            = f"model://description/textures/arucos/{mid}.jpg"
+    # La caja de Gazebo espeja la textura para markers que miran a +gz (yaw 90 o
+    # 180). Para esos usamos la textura pre-volteada (<id>_flip.jpg) para que se
+    # vea derecha. Ruta portable via GZ_SIM_RESOURCE_PATH (share de description).
+    needs_flip     = round(m['yaw_deg']) % 360 in (90, 180)
+    tex            = f"{mid}_flip" if needs_flip else f"{mid}"
+    img            = f"model://description/textures/arucos/{tex}.jpg"
     # Marcador VERTICAL con imagen derecha: cara (Z local) -> normal horizontal,
     # arriba (Y local) -> +Z mundo.  roll=pi/2, pitch=0, yaw=yaw_gz (=yaw_deg).
     roll           = math.pi / 2
