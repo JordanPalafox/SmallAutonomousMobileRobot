@@ -33,3 +33,6 @@ logo_aliases:
   WALMART:  walmart
   WALMAR:   walmart
   WALLMART: walmart
+  WOLMAR:   walmart   # decode real del QR del pallet (Wolmar, con O)
+  WOLMART:  walmart
+  WOLLMART: walmart

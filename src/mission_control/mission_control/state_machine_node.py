@@ -104,7 +104,7 @@ class StateMachineNode(Node):
         # truck_3,truck_4], matches the pallet's QR logo, drives there and lowers
         # the lifter to release_level.
         self.declare_parameter("logo_truck_waypoints", ["truck_2", "truck_3", "truck_4"])
-        self.declare_parameter("osc_angular_speed", 0.4)      # rad/s, in-place turn
+        self.declare_parameter("osc_angular_speed", 0.7)      # rad/s, in-place turn (0.4 quedaba bajo el deadband)
         self.declare_parameter("osc_sweep_start_deg", 12.0)   # first half-swing
         self.declare_parameter("osc_sweep_step_deg", 8.0)     # widen each full swing
         self.declare_parameter("osc_sweep_max_deg", 45.0)     # cap the swing
@@ -116,9 +116,10 @@ class StateMachineNode(Node):
         # forward_time s to slide the forks under the pallet, change to lift_level
         # to take its weight, reverse reverse_time s to pull it clear, and finish
         # at transport_level.
-        self.declare_parameter("pick_approach_speed", 0.10)    # m/s forward & reverse
+        self.declare_parameter("pick_approach_speed", 0.10)    # m/s forward creep
         self.declare_parameter("pick_forward_time", 5.0)       # s driving into the pallet
         self.declare_parameter("pick_reverse_time", 10.0)      # s backing out
+        self.declare_parameter("pick_reverse_speed", 0.08)     # m/s backing out (loaded w/ pallet → needs more than the creep)
         self.declare_parameter("pick_entry_level", 4)          # fork height BEFORE docking
         self.declare_parameter("pick_lift_level", 5)           # height to lift the pallet
         self.declare_parameter("pick_transport_level", 3)      # lifter height after backing out
@@ -200,6 +201,7 @@ class StateMachineNode(Node):
         pick_approach_speed    = float(self.get_parameter("pick_approach_speed").value)
         pick_forward_time      = float(self.get_parameter("pick_forward_time").value)
         pick_reverse_time      = float(self.get_parameter("pick_reverse_time").value)
+        pick_reverse_speed     = float(self.get_parameter("pick_reverse_speed").value)
         pick_entry_level       = int(self.get_parameter("pick_entry_level").value)
         pick_lift_level        = int(self.get_parameter("pick_lift_level").value)
         pick_transport_level   = int(self.get_parameter("pick_transport_level").value)
@@ -265,6 +267,7 @@ class StateMachineNode(Node):
             pick_approach_speed=pick_approach_speed,
             pick_forward_time=pick_forward_time,
             pick_reverse_time=pick_reverse_time,
+            pick_reverse_speed=pick_reverse_speed,
             pick_entry_level=pick_entry_level,
             pick_lift_level=pick_lift_level,
             pick_stall_grace=pick_stall_grace,
@@ -537,6 +540,7 @@ class StateMachineNode(Node):
         pick_approach_speed: float,
         pick_forward_time: float,
         pick_reverse_time: float,
+        pick_reverse_speed: float,
         pick_entry_level: int,
         pick_lift_level: int,
         pick_stall_grace: float,
@@ -584,7 +588,7 @@ class StateMachineNode(Node):
             Pick(self._debug, self._publish_alignment_start, self._publish_lifter,
                  self._publish_cmd, alignment_timeout, lifter_timeout,
                  pick_approach_speed, pick_forward_time, pick_reverse_time,
-                 pick_entry_level, pick_lift_level,
+                 pick_reverse_speed, pick_entry_level, pick_lift_level,
                  pick_stall_grace, pick_stall_speed, pick_stall_ticks,
                  pick_vision_stop, pick_vision_fresh_s, pick_transport_level, **kw),
             transitions={

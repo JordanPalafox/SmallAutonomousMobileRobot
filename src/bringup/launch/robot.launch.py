@@ -244,7 +244,7 @@ def generate_launch_description():
     # ── 6. Logo stop detector (vision PICK approach stop) ──────────────
     # Delayed 3 s so it does not steal CPU from slam_node's MCL init on the
     # Nano. Calibrated defaults: template-only (mode 2), stop at apparent
-    # scale 0.90 (before the reference distance ≈ contact, for margin).
+    # scale 0.85 (before the reference distance ≈ contact, for margin).
     # Tune via stop_scale/match_thr; lower process_hz if CPU-bound.
     logo_stop_node = TimerAction(period=3.0, actions=[Node(
         package='perception', executable='logo_stop_debug', name='logo_stop_debug',
@@ -255,10 +255,10 @@ def generate_launch_description():
             'process_hz':    12.0,
             'mode':          2,
             # Stop well BEFORE the reference distance for margin: scales are
-            # searched in 0.05 steps; 1.00 = reference ≈ contact, so 0.90 fires
-            # two steps early (more clearance so the slow detector/creep never
+            # searched in 0.05 steps; 1.00 = reference ≈ contact, so 0.85 fires
+            # three steps early (more clearance so the slow detector/creep never
             # rams the load → no brownout).
-            'stop_scale':    0.90,
+            'stop_scale':    0.85,
             'match_thr':     0.45,
             'hold_frames':   4,
             # ROI = bottom half only. The load's logo sits in the lower frame at

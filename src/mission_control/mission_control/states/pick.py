@@ -49,6 +49,7 @@ class Pick(DebuggableState):
         drive_speed: float,
         forward_time: float,
         reverse_time: float,
+        reverse_speed: float,
         entry_level: int,
         lift_level: int,
         stall_grace: float,
@@ -71,6 +72,7 @@ class Pick(DebuggableState):
         self._drive_speed = float(drive_speed)
         self._forward_time = float(forward_time)
         self._reverse_time = float(reverse_time)
+        self._reverse_speed = float(reverse_speed)
         self._entry_level = int(entry_level)
         self._lift_level = int(lift_level)
         self._stall_grace = float(stall_grace)
@@ -113,6 +115,27 @@ class Pick(DebuggableState):
             if outcome == "failed":
                 return "failed"
 
+            # Alignment reached DONE → LATCH the QR decoded AT THE DOCK into
+            # qr_value. At DONE the robot is close + centred on the pallet, so
+            # this read is far more reliable than SEARCH's far-range/edge decode
+            # (which can be garbled or empty). RELEASE_LOAD resolves the delivery
+            # truck from qr_value, so a bad SEARCH read made it fail → IDLE. We
+            # overwrite only with a non-empty dock read, and it then stays fixed
+            # until the next PICK reaches DONE.
+            qr_dock = bb_get(blackboard, "qr_detected")
+            if qr_dock:
+                prev = bb_get(blackboard, "qr_value")
+                blackboard["qr_value"] = qr_dock
+                if qr_dock != prev:
+                    logger.info("[PICK] DONE — latched dock QR %r (SEARCH had %r).",
+                                qr_dock, prev)
+                else:
+                    logger.info("[PICK] DONE — dock QR confirmed %r.", qr_dock)
+            else:
+                logger.warning("[PICK] DONE but no QR decoded at the dock — "
+                               "RELEASE_LOAD will use SEARCH's qr_value %r.",
+                               bb_get(blackboard, "qr_value"))
+
         # --- 3) creep forward toward the pallet: stop by VISION (Electric-80
         #         logo at target distance) BEFORE touching the load, so the
         #         motor never stalls into it and browns out the Jetson. Wheel
@@ -138,8 +161,11 @@ class Pick(DebuggableState):
             return "failed"
 
         # --- 5) back out with the pallet (timed reverse) ---
+        # Reverse uses its OWN speed (faster than the forward creep): now loaded
+        # with the pallet, the creep speed sometimes sat under the motor deadband
+        # and the robot didn't move. No slam risk here — it's backing AWAY.
         if drive_for_time(self._debug, blackboard, self._publish_cmd,
-                          -self._drive_speed, 0.0, self._reverse_time,
+                          -self._reverse_speed, 0.0, self._reverse_time,
                           tag="PICK rev") == "stop":
             return "stop"
 

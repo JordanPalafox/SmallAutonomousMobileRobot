@@ -147,7 +147,7 @@ class QRQuadAlignmentNode(Node):
         self.declare_parameter('dock_tol_cx_px', 15.0)   # estricto: centra mejor el palet en X (~0.6cm @ dock)
         self.declare_parameter('dock_tol_cy_px', 15.0)
         # Ganancias DOCK
-        self.declare_parameter('dock_max_linear', 0.025) # m/s — muy lento; piso del dock ~0.02 (V_DEADBAND+0.005)
+        self.declare_parameter('dock_max_linear', 0.035) # m/s — lento pero por ENCIMA del deadband con margen (subido 0.025→0.035: a 0.025 el acople al rumbo lo dejaba bajo el deadband y se frenaba)
         self.declare_parameter('kp_v_dock_px', 0.0006)   # m/s por pixel de err_cy
         # Centrado PD (P + D): el termino derivativo amortigua el sobrepaso que
         # hacia "serpentear" el robot. kp mas suave que antes (era 0.0025) ahora
@@ -161,7 +161,7 @@ class QRQuadAlignmentNode(Node):
         # "S"). v se escala de 1 (centrado) hasta dock_align_v_min (NO a 0) cuando
         # |err_cx| alcanza dock_align_gate_px.
         self.declare_parameter('dock_align_gate_px', 70.0)
-        self.declare_parameter('dock_align_v_min', 0.5)   # fraccion minima de avance (1.0 = sin acople)
+        self.declare_parameter('dock_align_v_min', 0.65)  # fraccion minima de avance (1.0 = sin acople). Subido 0.5→0.65: mantiene mas avance mientras corrige rumbo, asi v no cae bajo el deadband y deja de moverse
         # Ticks consecutivos centrados para confirmar DONE (a 10 Hz: 3 ~ 0.3s).
         self.declare_parameter('dock_done_stable_ticks', 3)
 
