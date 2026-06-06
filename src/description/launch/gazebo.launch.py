@@ -183,7 +183,11 @@ def generate_launch_description():
             package="ros_gz_sim",
             executable="create",
             output="screen",
-            arguments=["-topic", "robot_description", "-name", "puzzlebot"],
+            # Spawn DENTRO de la pista (pose marcada por el usuario con una esfera
+            # en Gazebo). El frame `map` del SLAM (mapping) nace aquí, así que el
+            # aruco_origin_in_map en sim.launch.py debe ser -(este x,y).
+            arguments=["-topic", "robot_description", "-name", "puzzlebot",
+                       "-x", "0.8255", "-y", "2.8927", "-z", "0.0"],
         )]
     )
 
@@ -194,6 +198,8 @@ def generate_launch_description():
             "/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock",
             "/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU",
             "/scan@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan",
+            # Camara del mastil -> ROS (para aruco_localization en la simulacion).
+            "/mast_camera/image_raw@sensor_msgs/msg/Image[ignition.msgs.Image",
         ],
         remappings=[("/imu", "/imu/out")],
         additional_env={"IGN_IP": "127.0.0.1"},

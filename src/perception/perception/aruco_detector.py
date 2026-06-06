@@ -230,15 +230,32 @@ class ArucoDetector:
                     except cv2.error:
                         pass
 
-            ok, rvec, tvec = cv2.solvePnP(
-                self._obj_pts,
-                corners_f.astype(np.float64),
-                self._K,
-                self._dist,
-                flags=self._pnp_flag,
-            )
-            if not ok:
+            # solvePnPGeneric da las (hasta 2) soluciones IPPE de un marker plano
+            # (ambigüedad de pose). Elegimos la FRONTAL: la que tiene el normal
+            # del marker apuntando HACIA la cámara (dot(normal, tvec) < 0). Así la
+            # pose del ArUco nunca "apunta hacia atrás", solo hacia el frente.
+            try:
+                n_sol, rvecs, tvecs, reproj = cv2.solvePnPGeneric(
+                    self._obj_pts, corners_f.astype(np.float64),
+                    self._K, self._dist, flags=self._pnp_flag)
+            except cv2.error:
                 continue
+            if not n_sol:
+                continue
+            best = None
+            solutions = []   # TODAS las soluciones IPPE (para desambiguar con el mapa aguas abajo)
+            for i in range(int(n_sol)):
+                rv = np.asarray(rvecs[i]).reshape(3, 1)
+                tv = np.asarray(tvecs[i]).reshape(3)
+                Rm, _ = cv2.Rodrigues(rv)
+                facing = float(np.dot(Rm[:, 2], tv))   # <0 → normal hacia la cámara (frontal)
+                err = float(np.asarray(reproj[i]).reshape(-1)[0]) if reproj is not None else 0.0
+                solutions.append({'rvec': rv.flatten(), 'tvec': tv.reshape(3).copy(),
+                                  'reproj': err, 'facing': facing})
+                score = (0 if facing < 0.0 else 1, err)  # prioriza frontal; luego menor error
+                if best is None or score < best[0]:
+                    best = (score, rv, tv)
+            rvec = best[1]; tvec = best[2].reshape(3, 1)
 
             results.append({
                 'id': int(marker_id),
@@ -246,6 +263,10 @@ class ArucoDetector:
                 'rvec': rvec.flatten(),
                 'tvec': tvec.flatten(),
                 'pose': _rvec_tvec_to_pose(rvec, tvec),
+                # Ambigüedad planar: ambas soluciones IPPE. El localizador elige la
+                # correcta con la orientación CONOCIDA del marker (robot derecho),
+                # no con la heurística de "frontal" (falla por ratos a distancia).
+                'solutions': solutions,
             })
 
         return results

@@ -4,6 +4,13 @@
     <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
     <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
     <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <!-- Sensors system: REQUERIDO para que el gpu_lidar (/scan) y la camara
+         (/mast_camera/image_raw) rendericen y publiquen. Sin esto no hay scan
+         ni imagen (el render NVIDIA EGL headless lo configura gazebo.launch.py). -->
+    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="ignition-gazebo-imu-system" name="ignition::gazebo::systems::Imu"/>
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows><pose>0 0 10 0 0 0</pose>
       <diffuse>0.8 0.8 0.8 1</diffuse><specular>0.2 0.2 0.2 1</specular>
@@ -848,7 +855,7 @@
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
         </collision>
       </link></model>
-    <model name="aruco_13"><static>true</static>
+    <model name="aruco_22"><static>true</static>
       <pose>4.8450 0.3700 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">
         <visual name="vis">
@@ -856,7 +863,7 @@
           <material>
             <diffuse>1 1 1 1</diffuse>
             <pbr><metal>
-              <albedo_map>model://description/textures/arucos/13.jpg</albedo_map>
+              <albedo_map>model://description/textures/arucos/22.jpg</albedo_map>
               <metalness>0.0</metalness>
               <roughness>1.0</roughness>
             </metal></pbr>
@@ -884,26 +891,8 @@
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
         </collision>
       </link></model>
-    <model name="aruco_22"><static>true</static>
-      <pose>0.0400 0.1200 0.0450 3.14159 -1.57080 3.14159</pose>
-      <link name="link">
-        <visual name="vis">
-          <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
-          <material>
-            <diffuse>1 1 1 1</diffuse>
-            <pbr><metal>
-              <albedo_map>model://description/textures/arucos/22.jpg</albedo_map>
-              <metalness>0.0</metalness>
-              <roughness>1.0</roughness>
-            </metal></pbr>
-          </material>
-        </visual>
-        <collision name="col">
-          <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
-        </collision>
-      </link></model>
     <model name="aruco_30"><static>true</static>
-      <pose>0.0400 2.0300 0.0450 3.14159 -1.57080 3.14159</pose>
+      <pose>0.0400 2.0300 0.0450 3.14159 -1.57080 0.00000</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -921,7 +910,7 @@
         </collision>
       </link></model>
     <model name="aruco_38"><static>true</static>
-      <pose>0.0400 3.2500 0.0450 3.14159 -1.57080 3.14159</pose>
+      <pose>0.0400 3.2500 0.0450 3.14159 -1.57080 0.00000</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -939,7 +928,7 @@
         </collision>
       </link></model>
     <model name="aruco_19"><static>true</static>
-      <pose>3.7850 2.4800 0.0450 3.14159 -1.57080 3.14159</pose>
+      <pose>3.7850 2.4800 0.0450 3.14159 -1.57080 0.00000</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
@@ -975,7 +964,7 @@
         </collision>
       </link></model>
     <model name="aruco_20"><static>true</static>
-      <pose>3.7850 1.2500 0.0450 3.14159 -1.57080 3.14159</pose>
+      <pose>3.7850 1.2500 0.0450 3.14159 -1.57080 0.00000</pose>
       <link name="link">
         <visual name="vis">
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>

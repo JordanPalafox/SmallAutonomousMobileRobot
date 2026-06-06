@@ -1,0 +1,20 @@
+# Mapa ArUco SIM (frame mundo Gazebo). Generado de slam/config/aruco_markers.yaml
+# (world_x=aruco_y, world_y=3.65-aruco_x, yaw_world=aruco_yaw-90). NO usar en robot real.
+
+track: {x: 4.85, y: 3.65}
+
+markers:
+  - {id:  5, x:  3.980, y:  0.035, z: 0.045, yaw_deg:  90.0, mount: wall}
+  - {id:  7, x:  4.515, y:  3.655, z: 0.045, yaw_deg: 270.0, mount: wall}
+  - {id: 17, x:  4.845, y:  3.145, z: 0.045, yaw_deg: 180.0, mount: wall}
+  - {id: 19, x:  3.785, y:  2.480, z: 0.045, yaw_deg:   0.0, mount: wall}
+  - {id: 20, x:  3.785, y:  1.250, z: 0.045, yaw_deg:   0.0, mount: wall}
+  - {id: 21, x:  0.790, y:  0.035, z: 0.045, yaw_deg:  90.0, mount: wall}
+  - {id: 22, x:  4.845, y:  0.370, z: 0.045, yaw_deg: 180.0, mount: wall}
+  - {id: 25, x:  2.725, y:  1.250, z: 0.045, yaw_deg: 180.0, mount: wall}
+  - {id: 28, x:  1.500, y:  1.245, z: 0.045, yaw_deg: 270.0, mount: wall}
+  - {id: 30, x:  0.040, y:  2.030, z: 0.045, yaw_deg:   0.0, mount: wall}
+  - {id: 31, x:  1.520, y:  2.305, z: 0.045, yaw_deg:  90.0, mount: wall}
+  - {id: 37, x:  0.950, y:  3.655, z: 0.045, yaw_deg: 270.0, mount: wall}
+  - {id: 38, x:  0.040, y:  3.250, z: 0.045, yaw_deg:   0.0, mount: wall}
+  - {id: 41, x:  2.725, y:  2.480, z: 0.045, yaw_deg: 180.0, mount: wall}

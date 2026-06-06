@@ -71,7 +71,7 @@
         <horizontal_fov>1.047</horizontal_fov>  <!-- 60 deg -->
         <image>
           <width>640</width>
-          <height>480</height>
+          <height>360</height>
           <format>R8G8B8</format>
         </image>
         <clip>
