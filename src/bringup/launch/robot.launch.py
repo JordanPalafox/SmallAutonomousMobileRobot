@@ -34,9 +34,15 @@ driver's frame to lidar_link, so slam_node's base→laser TF lookup resolves.
 
 Pre-conditions on the Jetson (started separately, hardware-specific):
   * LiDAR node publishing /scan @ 10 Hz (frame_id = lidar_link).
+  * Camera driver publishing /video_source/raw @ ~10 Hz (640x360). aruco_localization,
+    logo_stop_debug (and qr if enabled) depend on it — if it's dead they silently
+    never detect (no error, just no /aruco_pose_estimate / no anchor).
   * micro-ROS agent bridging the MCR2 hackerboard
       ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyTHS1
     (provides /VelocityEncL, /VelocityEncR, consumes /cmd_vel)
+  * FastDDS profile ~/.ros/fastrtps_profiles.xml (robot-subnet 192.168.137.x whitelist)
+    present on BOTH Jetson and laptop, with FASTRTPS_DEFAULT_PROFILES_FILE pointing to
+    it. Do NOT clear it here (only sim.launch.py clears it for off-network localhost).
   * Clocks synced with the laptop (chrony); same ROS_DOMAIN_ID on both.
   * Headless — NO RViz here (run it on the laptop).
 
@@ -66,6 +72,22 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
+def _flat_obstacles(path):
+    """Lee static_layout_*.yaml y lo aplana a [cx,cy,sx,sy,yaw_rad]×N para el param
+    aruco_static_obstacles del slam_node. [] si no existe."""
+    import math
+    import yaml
+    try:
+        d = yaml.safe_load(open(path))
+        flat = []
+        for o in d.get('obstacles', []):
+            flat += [float(o['x']), float(o['y']), float(o['sx']), float(o['sy']),
+                     math.radians(float(o.get('yaw_deg', 0.0)))]
+        return flat
+    except Exception:
+        return []
+
+
 def generate_launch_description():
     pkg_controller  = get_package_share_directory('controller')
     pkg_slam        = get_package_share_directory('slam')
@@ -75,6 +97,11 @@ def generate_launch_description():
     slam_params_path    = os.path.join(pkg_slam, 'config', 'slam_params.yaml')
     lifting_params_path = os.path.join(pkg_lifting, 'config', 'lifting_params.yaml')
     camera_params_path  = os.path.join(pkg_perception, 'config', 'camera_params.yaml')
+    aruco_map_path      = os.path.join(pkg_perception, 'config', 'aruco_map.yaml')
+    # Layout estático del gemelo digital en frame REAL (best-fit del .world sobre los
+    # marcadores reales, ~0.12 m rmse) → slam_node lo estampa al anclar.
+    static_layout_real = _flat_obstacles(
+        os.path.join(pkg_perception, 'config', 'static_layout_real.yaml'))
 
     map_yaml_default = os.path.expanduser('~/ros2_maps/warehouse.yaml')
 
@@ -103,6 +130,21 @@ def generate_launch_description():
                     'gives double walls on every turn. Tune 0.05-0.15 to your '
                     'measured driver latency.')
     scan_time_offset = LaunchConfiguration('scan_time_offset')
+
+    # Pose inicial del robot en el mapa anclado (frame `map`, esquina SW = 0,0).
+    # En NAVEGACIÓN el slam carga el mapa anclado y siembra la creencia aquí; el
+    # default (0,0,0) es la esquina SW. Si colocas el robot en otro punto conocido,
+    # pásalo (p.ej. initial_x:=1.8 initial_y:=0.5 initial_theta:=1.57); si no, usa
+    # "2D Pose Estimate" en RViz tras lanzar, o deja que el rescate ArUco lo recupere.
+    initial_x_arg = DeclareLaunchArgument(
+        'initial_x', default_value='0.0',
+        description='X inicial del robot en el mapa anclado [m] (SW corner = 0,0).')
+    initial_y_arg = DeclareLaunchArgument(
+        'initial_y', default_value='0.0',
+        description='Y inicial del robot en el mapa anclado [m] (SW corner = 0,0).')
+    initial_theta_arg = DeclareLaunchArgument(
+        'initial_theta', default_value='0.0',
+        description='Heading inicial del robot en el mapa anclado [rad].')
 
     # The URDF only publishes the `lidar_link` frame, but the stock RPLidar A1
     # driver stamps scans with frame_id `laser`.  slam_node looks up
@@ -160,6 +202,21 @@ def generate_launch_description():
                     'cx=325.6px, cy=245.9px (50/50 detections). Read the live "d=..mm" '
                     'in the dashboard to retune.')
 
+    # ArUco re-localisation. Runs HERE on the Jetson (local camera + local
+    # slam_node) so the /aruco_pose_estimate → slam_node correction has NO WiFi
+    # latency. Detecta los marcadores del piso y publica la pose absoluta del
+    # robot en `map`; slam_node la usa para reposicionarse cuando deriva en
+    # zonas ambiguas y deja que el scan la encaje con las paredes.
+    aruco_arg = DeclareLaunchArgument(
+        'aruco', default_value='true',
+        description='Run aruco_localization (floor ArUco re-localisation).')
+    aruco_pitch_arg = DeclareLaunchArgument(
+        'aruco_cam_pitch_deg', default_value='20.0',
+        description='Inclinación hacia ABAJO de la cámara [grados]. = el tilt del URDF '
+                    '(cam_holder 20°), IGUAL que en sim (donde el single-marker funciona '
+                    'bien). El single-marker depende de este valor; si la cámara real '
+                    'está a otro ángulo, ajústalo (aruco_cam_pitch_deg:=X).')
+
     laser_frame_bridge = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -190,6 +247,60 @@ def generate_launch_description():
             'scan_time_offset': scan_time_offset,
             'map_yaml':         map_yaml,
             'start_mode':       start_mode,
+            # Pista REAL = 3.65 (X) x 4.85 (Y) — AL REVÉS de los defaults SIM
+            # (4.85x3.65) en slam_params.yaml. El chequeo de bounds del anclaje
+            # (slam_node onArucoMarkers) rechaza poses fuera de [0..x]x[0..y]; sin
+            # esto, los markers reales de la pared lejana en Y (id 7/13/17 a
+            # y~4.5-4.85) caen fuera y el anclaje FASE-1 nunca cierra.
+            'aruco_track_x':    3.65,
+            'aruco_track_y':    4.85,
+            # Pose inicial en el mapa anclado (esquina SW = 0,0). Default (0,0,0) =
+            # esquina SW; si el robot NO arranca ahí, pasa initial_x/initial_y/
+            # initial_theta, o usa "2D Pose Estimate" en RViz (o deja que el rescate
+            # ArUco lo recupere al ver un marcador).
+            'initial_x':        ParameterValue(LaunchConfiguration('initial_x'), value_type=float),
+            'initial_y':        ParameterValue(LaunchConfiguration('initial_y'), value_type=float),
+            'initial_theta':    ParameterValue(LaunchConfiguration('initial_theta'), value_type=float),
+            # PAREDES EXTERNAS = fuente de verdad: al anclar (y al cargar el mapa
+            # anclado) quema el perímetro canónico 3.65×4.85 como pared nítida,
+            # encima del scan ruidoso del LiDAR.
+            'aruco_stamp_walls':          True,
+            'aruco_wall_thickness_cells': 2,
+            # Gemelo digital (racks/rollers/camiones) en frame real → estampado al anclar.
+            'aruco_static_obstacles':     static_layout_real,
+            # Una vez que el scan encaja con la geometría canónica, deja el mapa FULL
+            # LIMPIO (solo el gemelo) y localiza puro contra él.
+            'aruco_full_clean':           True,
+            # AJUSTES REAL para que el anclaje SÍ dispare en la pista (vs sim):
+            #  - obs_max_range 3.0: espeja el max_range del nodo aruco (markers a ≤3 m).
+            #  - anchor_cert 0.30: el MCL real tiene menos certeza que el sim.
+            #  - reanchor_interval 8 s: re-rasterizar menos seguido (alivia el Nano 2 GB).
+            'aruco_obs_max_range':        3.0,
+            'aruco_anchor_cert':          0.30,
+            'aruco_reanchor_interval':    8.0,
+            # SCAN-MATCH MÁS ESTRICTO (REAL): sigma_hit más chico = verosimilitud más
+            # afilada. El gemelo digital (racks/rollers/camiones) ROMPE la simetría del
+            # almacén casi-rectangular, así que afilar amplifica esa pequeña diferencia
+            # entre la esquina correcta y la espejo → el MCL pesa más la correcta y
+            # resiste derivar al rincón equivocado. (default sim 0.10 → 0.06.)
+            'amcl_sigma_hit':             0.06,
+            # RELOCALIZACIÓN POR ArUco: con el mapa YA fixeado y los markers bien medidos,
+            # la pose ArUco se PRIORIZA. Cuando discrepa de la pose MCL >0.6 m durante 2
+            # fixes ciertos seguidos (single O multi), RE-SIEMBRA el MCL ahí AUNQUE el scan
+            # encaje (lo saca de la esquina espejo). 0.6 m separa deriva normal (<0.6) del
+            # error de esquina (>>0.6); 2 fixes = relocaliza rápido sin saltar por 1 ruidoso.
+            'aruco_disagree_dist':        0.6,
+            'aruco_disagree_count':       2,
+            # Reducción de ruido del RPLidar A1 (REAL). Seguras (no tocan el lock):
+            #  - scan_quality_min: filtra retornos débiles/especulares del A1 (no-op
+            #    si el driver no publica intensities). Sube/baja si filtra de más/menos.
+            #  - display_l_occ/free: render más nítido (más hits para pintar pared) —
+            #    solo display, no afecta el matcheo.
+            #  - outlier_max_jump: descarta más puntos saltados.
+            'scan_quality_min':  5.0,
+            'display_l_occ':     3.0,
+            'display_l_free':   -2.0,
+            'outlier_max_jump':  0.20,
         }],
         remappings=[('/odom', '/puzzlebot_controller/odom')],
         output='screen', emulate_tty=True,
@@ -276,10 +387,12 @@ def generate_launch_description():
             'process_hz':    12.0,
             'mode':          2,
             # Stop well BEFORE the reference distance for margin: scales are
-            # searched in 0.05 steps; 1.00 = reference ≈ contact, so 0.85 fires
-            # three steps early (more clearance so the slow detector/creep never
-            # rams the load → no brownout).
-            'stop_scale':    0.85,
+            # searched in 0.05 steps; 1.00 = reference ≈ contact. 0.78 gives the
+            # scale match extra tolerance so the vision stop is considered
+            # successful even when lighting/angle keep the apparent logo a bit
+            # smaller than ideal (and more clearance so the slow detector/creep
+            # never rams the load → no brownout).
+            'stop_scale':    0.78,
             'match_thr':     0.45,
             'hold_frames':   4,
             # ROI = bottom half only. The load's logo sits in the lower frame at
@@ -293,16 +406,63 @@ def generate_launch_description():
         output='screen', emulate_tty=True,
     )])
 
+    # ── 7. ArUco re-localisation (local camera → no WiFi lag) ──────────
+    # Delayed 2 s so the camera driver is up. Detecta los ArUco del piso
+    # (DICT_ARUCO_ORIGINAL 5x5, 9 cm), estima la pose del robot en `map` con el
+    # aruco_map.yaml y la publica en /aruco_pose_estimate. slam_node (local) la
+    # consume para reposicionarse. La cámara real publica en /video_source/raw.
+    aruco_node = TimerAction(period=2.0, actions=[Node(
+        package='perception', executable='aruco_localization', name='aruco_localization',
+        parameters=[{
+            'use_sim_time':   False,
+            'image_topic':    '/video_source/raw',
+            'camera_params':  camera_params_path,
+            'aruco_map':      aruco_map_path,
+            'marker_length':  0.09,
+            'dictionary':     'original',
+            'map_frame':      'map',
+            # Convención in-plane de la imagen del marker = IGUAL que sim (90), donde el
+            # single-marker funciona bien. (El método igual la auto-resuelve, pero se
+            # deja explícita para que el overlay y todo cuadre como en sim.)
+            'marker_inplane_deg': 90.0,
+            # EXTRÍNSECOS DE CÁMARA = como el gemelo/URDF/sim (donde el single-marker
+            # funciona): 10 cm adelante, 20 cm de alto, pitch 20° (cam_holder del URDF).
+            # El single-marker DEPENDE de estos; si la cámara real difiere, ajusta el
+            # arg aruco_cam_pitch_deg / cam_xyz.
+            'cam_xyz':        [0.10, 0.0, 0.20],
+            'cam_pitch_deg':  ParameterValue(LaunchConfiguration('aruco_cam_pitch_deg'), value_type=float),
+            # ANCLAJE: el frame `map` del SLAM == frame canónico ArUco con la esquina
+            # SW del almacén en (0,0). aruco_map.yaml ya está medido desde esa esquina,
+            # así que el origen es [0,0,0] (NO el centro de la pista, como en el diseño
+            # viejo). Así el stream /aruco_markers (canon), el overlay /aruco_ideal_map
+            # y /aruco_pose_estimate quedan en el frame SW=(0,0) al que ancla el SLAM.
+            'aruco_origin_in_map': [0.0, 0.0, 0.0],
+            # Rango de detección para el ANCLAJE: 2.0 m era muy corto — en un almacén
+            # de 3.65×4.85 m, desde el centro las paredes están a ~1.8-2.4 m, así que
+            # los markers quedaban >2 m y se filtraban → no se acumulaban ≥3 distintos
+            # → el anclaje nunca cerraba. 3.0 m permite juntar suficientes markers.
+            'max_range':      3.0,
+            'publish_debug_image': True,
+        }],
+        condition=IfCondition(LaunchConfiguration('aruco')),
+        output='screen', emulate_tty=True,
+    )])
+
     return LaunchDescription([
         start_mode_arg,
         map_yaml_arg,
         scan_time_offset_arg,
+        initial_x_arg,
+        initial_y_arg,
+        initial_theta_arg,
         bridge_laser_frame_arg,
         use_lifter_arg,
         logo_stop_arg,
         qr_arg,
         qr_dry_run_arg,
         qr_dock_dist_arg,
+        aruco_arg,
+        aruco_pitch_arg,
         laser_frame_bridge,
         controller_launch,
         slam_node,
@@ -310,4 +470,5 @@ def generate_launch_description():
         lifting_node,
         logo_stop_node,
         qr_node,
+        aruco_node,
     ])

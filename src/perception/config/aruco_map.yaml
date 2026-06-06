@@ -1,0 +1,31 @@
+# =============================================================================
+# Mapa de marcadores ArUco de localizacion
+# =============================================================================
+# Frame `map` (REP-103): X adelante, Y izquierda, Z arriba.
+# Markers VERTICALES (en muros / costados de obstaculos, mirando hacia la pista):
+#   x, y      -> posicion del CENTRO del marker [metros]
+#   z         -> altura del CENTRO sobre el piso [metros]
+#   yaw_deg   -> direccion a la que MIRA la cara (su normal) [grados]
+#                0 = mira +X, 90 = +Y, 180 = -X, 270 = -Y
+#   mount     -> wall (vertical) | floor (plano)
+#
+# Editar con la GUI:  python3 src/perception/tools/aruco_map_editor.py
+# Diccionario: DICT_ARUCO_ORIGINAL (5x5) | Tamano: 9 cm | Pista 3.65 x 4.85 m
+# =============================================================================
+
+track: {x: 3.65, y: 4.85}
+
+markers:
+  - {id: 5,  x: 3.620, y: 3.980, z: 0.045, yaw_deg: 180.0, mount: wall}
+  - {id: 7,  x: 0.000, y: 4.515, z: 0.060, yaw_deg: 0.0,   mount: wall}
+  - {id: 17, x: 0.505, y: 4.850, z: 0.080, yaw_deg: 270.0, mount: wall}
+  - {id: 19, x: 1.270, y: 3.580, z: 0.045, yaw_deg: 90.0,  mount: wall}
+  - {id: 20, x: 2.400, y: 3.570, z: 0.040, yaw_deg: 90.0,  mount: wall}
+  - {id: 21, x: 3.650, y: 0.790, z: 0.060, yaw_deg: 180.0, mount: wall}
+  - {id: 25, x: 2.380, y: 2.500, z: 0.050, yaw_deg: 270.0, mount: wall}
+  - {id: 28, x: 2.420, y: 1.500, z: 0.050, yaw_deg: 0.0,   mount: wall}
+  - {id: 30, x: 1.620, y: 0.030, z: 0.045, yaw_deg: 90.0,  mount: wall}
+  - {id: 31, x: 1.360, y: 1.520, z: 0.065, yaw_deg: 180.0, mount: wall}
+  - {id: 37, x: 0.000, y: 0.950, z: 0.055, yaw_deg: 0.0,   mount: wall}
+  - {id: 38, x: 0.400, y: 0.070, z: 0.055, yaw_deg: 90.0,  mount: wall}
+  - {id: 41, x: 1.280, y: 2.520, z: 0.040, yaw_deg: 270.0, mount: wall}

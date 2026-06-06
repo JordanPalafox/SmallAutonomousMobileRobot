@@ -239,6 +239,16 @@ Visualization Manager:
       Enabled: true
       Topic: {Value: /graph_markers, Reliability Policy: Reliable, Durability Policy: Volatile, History Policy: Keep Last, Depth: 1}
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: ArUco Links
+      Enabled: true
+      Topic: {Value: /aruco_localization/debug_markers, Reliability Policy: Reliable, Durability Policy: Volatile, History Policy: Keep Last, Depth: 10}
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Ideal Map (canonical)
+      Enabled: true
+      Topic: {Value: /aruco_ideal_map, Reliability Policy: Reliable, Durability Policy: Transient Local, History Policy: Keep Last, Depth: 1}
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:

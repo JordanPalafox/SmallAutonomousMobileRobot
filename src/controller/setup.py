@@ -33,6 +33,7 @@ setup(
             'real_odom = controller.real_odom:main',
             'velocity_bridge = controller.velocity_bridge:main',
             'map_odom_relay = controller.map_odom_relay:main',
+            'gemelo_mirror = controller.gemelo_mirror:main',
         ],
     },
 )

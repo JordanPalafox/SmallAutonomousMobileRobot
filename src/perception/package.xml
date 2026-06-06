@@ -13,6 +13,7 @@
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>visualization_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>python3-opencv</depend>
   <depend>python3-numpy</depend>

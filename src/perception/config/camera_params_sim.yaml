@@ -1,0 +1,12 @@
+camera:
+  image_width: 640
+  image_height: 360
+  # Intrinsecos del sensor de camara SIM de Gazebo/Ignition
+  # (description/urdf/puzzlebot_gazebo.xacro: mast_camera, 640x480,
+  #  horizontal_fov = 1.047 rad = 60 deg). Camara pinhole ideal, sin distorsion.
+  #   fx = fy = (width/2) / tan(hfov/2) = 320 / tan(0.5235) = 554.26
+  #   cx = width/2 = 320 ; cy = height/2 = 180  (640x360)
+  camera_matrix: [554.26, 0.0, 320.0, 0.0, 554.26, 180.0, 0.0, 0.0, 1.0]
+  # Sin distorsion en el render sim (solo ruido gaussiano leve)
+  distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+  marker_length: 0.09

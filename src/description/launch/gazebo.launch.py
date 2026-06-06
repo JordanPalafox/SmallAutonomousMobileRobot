@@ -9,6 +9,7 @@ from launch.actions import (
     DeclareLaunchArgument, ExecuteProcess, SetEnvironmentVariable, TimerAction
 )
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.conditions import IfCondition, UnlessCondition
 
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -37,7 +38,21 @@ def generate_launch_description():
 
     world_name_arg = DeclareLaunchArgument(
         name="world_name",
-        default_value="empty"
+        default_value="almacen_racks"
+    )
+
+    mirror_arg = DeclareLaunchArgument(
+        name="mirror",
+        default_value="false",
+        description="true = gemelo-espejo: robot solo-visual, su pose la fija "
+                    "gemelo_mirror desde /slam_pose del robot real (sin ros2_control "
+                    "ni controladores).",
+    )
+
+    gui_arg = DeclareLaunchArgument(
+        name="gui",
+        default_value="true",
+        description="true = abre la GUI de Gazebo (ign gazebo -g) conectada al server.",
     )
 
     world_path = PathJoinSubstitution([
@@ -61,11 +76,18 @@ def generate_launch_description():
     ros_distro = os.environ["ROS_DISTRO"]
     is_ignition = "True" if ros_distro == "humble" else "False"
 
+    # mirror=true → gemelo-espejo: robot SOLO-VISUAL (sin ros2_control) cuya pose
+    # la fija gemelo_mirror desde el robot real. mirror=false → sim normal.
+    mirror = LaunchConfiguration("mirror")
+    use_gz_control = PythonExpression(
+        ["'false' if '", mirror, "' == 'true' else 'true'"])
+
     robot_description = ParameterValue(
         Command([
             "xacro ",
             LaunchConfiguration("model"),
-            " is_ignition:=", is_ignition
+            " is_ignition:=", is_ignition,
+            " use_gz_control:=", use_gz_control,
         ]),
         value_type=str
     )
@@ -130,6 +152,12 @@ def generate_launch_description():
     # start from a fresh display.  (:99 is private to this sim, so this is safe.)
     xvfb = ExecuteProcess(
         cmd=["bash", "-c",
+             # Mata cualquier Xvfb :99 ZOMBI de un run anterior antes de limpiar
+             # el lock. Si un Xvfb sigue corriendo en :99, borrar el lock no basta:
+             # el nuevo no puede tomar el display, el render de Gazebo se cuelga en
+             # "Sensors.cc: Waiting for init", el sim se ve atorado y al hacer Ctrl+C
+             # el plugin ros2_control aborta el server (carrera de shutdown).
+             "pkill -x Xvfb 2>/dev/null; sleep 0.3; "
              "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null; "
              "exec Xvfb :99 -screen 0 1280x1024x24"],
         output="screen",
@@ -140,6 +168,16 @@ def generate_launch_description():
         cmd=[
             "bash", "-c",
             (
+                # Kill any stale Ignition Gazebo server (>5s old) before launching.
+                # 'pkill --older 5' never matches the current bash process (age≈0s),
+                # so it safely removes only leftover runs.  Without this, a second
+                # launch detects the old /clock publisher and falls back to the
+                # namespaced topic, which the ROS bridge doesn't subscribe to →
+                # gz_ros2_control never gets a valid ROS clock → controller_manager
+                # service is never available → spawners fail.
+                "pkill --older 5 -f 'ign gazebo -s' 2>/dev/null; "
+                "pkill --older 5 -f 'parameter_bridge.*clock' 2>/dev/null; "
+                "sleep 0.3; "
                 f"{render_env}"
                 f"IGN_IP=127.0.0.1 "
                 f"GZ_SIM_SYSTEM_PLUGIN_PATH={plugin_path} "
@@ -161,7 +199,11 @@ def generate_launch_description():
             package="ros_gz_sim",
             executable="create",
             output="screen",
-            arguments=["-topic", "robot_description", "-name", "puzzlebot"],
+            # Spawn DENTRO de la pista (pose marcada por el usuario con una esfera
+            # en Gazebo). El frame `map` del SLAM (mapping) nace aquí, así que el
+            # aruco_origin_in_map en sim.launch.py debe ser -(este x,y).
+            arguments=["-topic", "robot_description", "-name", "puzzlebot",
+                       "-x", "0.8255", "-y", "2.8927", "-z", "0.0"],
         )]
     )
 
@@ -172,9 +214,12 @@ def generate_launch_description():
             "/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock",
             "/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU",
             "/scan@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan",
+            # Camara del mastil -> ROS (para aruco_localization en la simulacion).
+            "/mast_camera/image_raw@sensor_msgs/msg/Image[ignition.msgs.Image",
         ],
         remappings=[("/imu", "/imu/out")],
         additional_env={"IGN_IP": "127.0.0.1"},
+        condition=UnlessCondition(mirror),
     )
 
     # Fallback joint_state_publisher: publishes zero-position joint states so
@@ -196,6 +241,7 @@ def generate_launch_description():
     # gz_ros2_control before configure — staggering avoids ok=False configure failure.
     jsb_spawner = TimerAction(
         period=12.0,
+        condition=UnlessCondition(mirror),
         actions=[
             Node(
                 package="controller_manager",
@@ -208,6 +254,7 @@ def generate_launch_description():
 
     diff_drive_spawner = TimerAction(
         period=18.0,
+        condition=UnlessCondition(mirror),
         actions=[
             Node(
                 package="controller_manager",
@@ -230,11 +277,43 @@ def generate_launch_description():
         executable="relay",
         arguments=["/cmd_vel_in", "/puzzlebot_controller/cmd_vel_unstamped"],
         output="screen",
+        condition=UnlessCondition(mirror),
+    )
+
+    # GUI de Gazebo — se conecta al server vía IGN Transport local.
+    # Usa el display real (:0) con el stack GL del sistema (no Xvfb).
+    gazebo_gui = TimerAction(
+        period=4.0,
+        condition=IfCondition(LaunchConfiguration("gui")),
+        actions=[ExecuteProcess(
+            cmd=["bash", "-c",
+                 f"DISPLAY=:0 IGN_IP=127.0.0.1 ruby {ign_exec} gazebo -g --force-version 6"],
+            output="screen",
+        )]
+    )
+
+    # Gemelo-espejo: copia /slam_pose del robot real a la pose del modelo en Gazebo.
+    # Transform REAL map (origen=SW, x=E-W, y=N-S) → SIM world (origen=SE, x=N-S, y=E-W):
+    #   gz_x = map_y + 0.0,   gz_y = -map_x + 3.65
+    gemelo_mirror_node = Node(
+        package="controller",
+        executable="gemelo_mirror",
+        name="gemelo_mirror",
+        parameters=[{
+            "world_name": LaunchConfiguration("world_name"),
+            "world_from_map_yaw_deg": -90.0,
+            "world_from_map_xy": [0.0, 3.65],
+        }],
+        additional_env={"IGN_IP": "127.0.0.1"},
+        condition=IfCondition(mirror),
+        output="screen",
     )
 
     return LaunchDescription([
         model_arg,
         world_name_arg,
+        mirror_arg,
+        gui_arg,
         gz_resource_path,
         ign_resource_path,
         # NOTE: gl_software (LIBGL_ALWAYS_SOFTWARE=1) is intentionally NOT added
@@ -246,10 +325,12 @@ def generate_launch_description():
         robot_state_publisher_node,
         xvfb,
         gazebo_server,
+        gazebo_gui,
         gz_spawn_entity,
         gz_ros2_bridge,
         joint_state_publisher_node,
         jsb_spawner,
         diff_drive_spawner,
         cmd_vel_relay,
+        gemelo_mirror_node,
     ])

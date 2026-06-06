@@ -77,7 +77,9 @@ El FPGA mapea cada nivel a un ángulo de servo:
 | `/lifter_level` | `UInt8` | → lifter node | Nivel 0–5 del lifter |
 | `/alignment_error` | `Point` | ← visión | Error de alineación en píxeles (x, y) |
 | `/voice_command` | `String` | ← voice node | Comando reconocido |
-| `/aruco_poses` | `PoseArray` | ← visión | Poses de markers Aruco detectados |
+| `/aruco_poses` | `PoseArray` | ← visión | Poses de markers Aruco detectados (frame cámara) |
+| `/aruco_ids` | `Int32MultiArray` | ← visión | IDs de markers, mismo orden que `/aruco_poses` |
+| `/aruco_pose_estimate` | `PoseWithCovarianceStamped` | ← visión | Pose del robot en `map` por ArUco (medición p/ EKF) |
 | `/trailer_detection` | `BoundingBox2D` | ← visión | Detección de tráiler con CNN |
 
 ---
@@ -140,3 +142,15 @@ Vocabulario objetivo: `start, stop, pause, next, ve, rack, camion, roller, nivel
 - **Bug1** sobre Bug0: más robusto ante obstáculos cóncavos
 - **Jetson.GPIO** para control FPGA: nativo para Jetson Nano
 - **Flask** para la web: ligero, suficiente para streaming + REST + WebSocket
+- **Localización ArUco**: markers fijos esparcidos en el mapa como balizas de
+  rescate cuando el MCL/Montecarlo se pierde (esquinas/aristas donde el scan no
+  encaja bien). Diccionario `DICT_ARUCO_ORIGINAL` (5×5, compatible con
+  marker_mapper; 4×4 no lo es), lado 9 cm. Nodo `aruco_localization` (en
+  `perception`) detecta los markers, estima la pose absoluta del robot en `map`
+  y publica `/aruco_pose_estimate` (`PoseWithCovarianceStamped`). `slam_node` la
+  consume para re-sembrar el filtro de partículas (params `aruco_enabled`,
+  `aruco_snap_tol`, `aruco_seed_sigma_*`, `aruco_global_init` en
+  `slam_params.yaml`). Mapa de posiciones en `perception/config/aruco_map.yaml`
+  y `slam/config/aruco_markers.yaml` (medir en pista, ±1 cm). Extrínsecos de
+  cámara en `aruco_params.yaml` (`cam_xyz`, `cam_pitch_deg`). Editor visual del
+  mapa: `perception/tools/aruco_map_editor.py`.

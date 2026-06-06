@@ -54,6 +54,28 @@ public:
   // re-mapped grid without invalidating the AMCL's grid pointer.
   void adoptLogFrom(OccupancyGrid& other);
 
+  // Stamp the PERIMETER of the world-frame rectangle [x0,x1]×[y0,y1] as occupied
+  // at `value` log-odds (edges only, `thickness_cells` cells thick, growing
+  // inward). Used to burn the canonical ArUco-anchored external walls into the
+  // map as the source of truth. With value=l_max the walls sit above
+  // occupied_stop, so the free-ray DDA stops at them and never erases them.
+  void stampWallRect(double x0, double y0, double x1, double y1,
+                     int thickness_cells, double value);
+
+  // Protect a band (metres) around the rectangle perimeter [x0,x1]×[y0,y1]: scan
+  // endpoints within `band` of that perimeter cast NO occupied vote in
+  // integrateCloud — the stamped canonical wall stays the only truth there, so the
+  // noisy scan can't grow double/parallel walls next to it. band<=0 disables.
+  // Inherited by cloneEmpty() so re-rasters (anchor / back-end) respect it too.
+  void setWallProtect(double x0, double y0, double x1, double y1, double band);
+
+  // Stamp a FILLED rotated rectangle (obstacle footprint: rack/roller/truck) centred
+  // at (cx,cy), size (sx,sy), rotated `yaw` rad, as occupied at `value` log-odds. Thin
+  // dimensions are widened to ≥~1 cell so walls don't vanish. value=l_max keeps it
+  // above occupied_stop (survives the free-ray DDA).
+  void stampRotatedRect(double cx, double cy, double sx, double sy,
+                        double yaw, double value);
+
   int width()  const { return w_; }
   int height() const { return h_; }
   double resolution() const { return res_; }
@@ -67,6 +89,8 @@ public:
 
 private:
   void buildLikelihoodField(double sigma);
+  // True if (wx,wy) is within protect_band_ of the protected rectangle perimeter.
+  bool nearWallProtect(double wx, double wy) const;
 
   int w_, h_;
   double res_, origin_x_, origin_y_;
@@ -74,6 +98,10 @@ private:
   double display_l_occ_, display_l_free_, occupied_stop_;
 
   std::vector<float> log_;     // h_*w_
+
+  // Wall-protect band (suppress occupied votes near the canonical perimeter).
+  bool protect_active_{false};
+  double protect_x0_{0}, protect_y0_{0}, protect_x1_{0}, protect_y1_{0}, protect_band_{0};
 
   // Likelihood field cache
   std::vector<float> lf_;

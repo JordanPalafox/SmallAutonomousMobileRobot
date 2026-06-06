@@ -33,19 +33,30 @@
   </gazebo>
 
   <!-- ROS 2 Control (Sensors system is loaded at the world level — do not repeat here) -->
-  <gazebo>
-    <xacro:if value="$(arg is_ignition)">
-      <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
-        <parameters>$(find controller)/config/puzzlebot_controllers.yaml</parameters>
-      </plugin>
-    </xacro:if>
+  <!-- Plugin de control omitido en modo solo-visual (gemelo-espejo). -->
+  <xacro:if value="$(arg use_gz_control)">
+    <gazebo>
+      <xacro:if value="$(arg is_ignition)">
+        <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
+          <parameters>$(find controller)/config/puzzlebot_controllers.yaml</parameters>
+        </plugin>
+      </xacro:if>
 
-    <xacro:unless value="$(arg is_ignition)">
-      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-        <parameters>$(find controller)/config/puzzlebot_controllers.yaml</parameters>
-      </plugin>
-    </xacro:unless>
-  </gazebo>
+      <xacro:unless value="$(arg is_ignition)">
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+          <parameters>$(find controller)/config/puzzlebot_controllers.yaml</parameters>
+        </plugin>
+      </xacro:unless>
+    </gazebo>
+  </xacro:if>
+
+  <!-- Modo solo-visual (gemelo-espejo): robot ESTÁTICO (sin físicas) — la pose
+       la fija gemelo_mirror vía set_pose; así no se cae ni rueda. -->
+  <xacro:unless value="$(arg use_gz_control)">
+    <gazebo>
+      <static>true</static>
+    </gazebo>
+  </xacro:unless>
 
   <!-- Mast camera sensor -->
   <gazebo reference="mast_camera_link">
@@ -60,7 +71,7 @@
         <horizontal_fov>1.047</horizontal_fov>  <!-- 60 deg -->
         <image>
           <width>640</width>
-          <height>480</height>
+          <height>360</height>
           <format>R8G8B8</format>
         </image>
         <clip>

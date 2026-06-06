@@ -1,0 +1,473 @@
+<?xml version="1.0"?>
+<robot name="puzzlebot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Arguments -->
+  <xacro:arg name="is_ignition" default="true"/>
+  <xacro:arg name="is_sim" default="true"/>
+
+  <!-- LiDAR is mounted rear-facing on the real robot (cable toward back).
+       Rotate 180° in real mode so the scan aligns with +X forward. -->
+  <xacro:property name="lidar_yaw" value="${0.0 if '$(arg is_sim)' == 'true' else 3.141592653589793}"/>
+
+  <!-- Include Gazebo plugins -->
+  <xacro:include filename="$(find description)/urdf/puzzlebot_gazebo.xacro" />
+
+  <!-- Include ros2_control -->
+  <xacro:include filename="$(find description)/urdf/puzzlebot_ros2_control.xacro" />
+
+  <!-- ==================== PROPERTIES ==================== -->
+  <xacro:property name="wheel_radius"    value="0.05"/>
+  <xacro:property name="wheel_separation" value="0.19"/>
+  <xacro:property name="base_mass"  value="1.0"/>
+  <xacro:property name="wheel_mass" value="0.1"/>
+  <xacro:property name="caster_mass" value="0.01"/>
+
+  <xacro:property name="s" value="1.0"/>
+
+  <!-- Inertia macros -->
+  <xacro:macro name="cylinder_inertia" params="m r h">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(3*r*r+h*h)/12}" ixy="0.0" ixz="0.0"
+               iyy="${m*(3*r*r+h*h)/12}" iyz="0.0"
+               izz="${m*r*r/2}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="box_inertia" params="m x y z">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(y*y+z*z)/12}" ixy="0.0" ixz="0.0"
+               iyy="${m*(x*x+z*z)/12}" iyz="0.0"
+               izz="${m*(x*x+y*y)/12}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="sphere_inertia" params="m r">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${2*m*r*r/5}" ixy="0.0" ixz="0.0"
+               iyy="${2*m*r*r/5}" iyz="0.0"
+               izz="${2*m*r*r/5}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ==================== ROBOT LINKS ==================== -->
+
+  <link name="base_footprint"/>
+
+  <link name="base_link">
+    <xacro:box_inertia m="${base_mass}" x="0.2" y="0.15" z="0.06"/>
+    <visual>
+      <geometry>
+        <mesh filename="package://description/meshes/Puzzlebot_Jetson_Lidar_Edition_Base.stl"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.2 0.15 0.06"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="wheel_right_link">
+    <xacro:cylinder_inertia m="${wheel_mass}" r="${wheel_radius}" h="0.02"/>
+    <visual>
+      <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/Puzzlebot_Wheel.stl"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <sphere radius="${wheel_radius}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="wheel_left_link">
+    <xacro:cylinder_inertia m="${wheel_mass}" r="${wheel_radius}" h="0.02"/>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/Puzzlebot_Wheel.stl"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <sphere radius="${wheel_radius}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="caster_link">
+    <xacro:sphere_inertia m="${caster_mass}" r="0.015"/>
+    <visual>
+      <origin xyz="0 0 -0.015" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/Puzzlebot_Caster_Wheel.stl"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="lidar_link">
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder radius="0.03" length="0.02"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.03" length="0.02"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Upper case shell mounted on top of the base, below the lidar -->
+  <link name="upper_case_link">
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.08 -0.0025 -0.0997" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/UpperCase.STL"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.2 0.15 0.06"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Front-facing camera fixed to the robot base -->
+  <link name="camera_link">
+    <inertial>
+      <mass value="0.02"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+    <collision>
+      <geometry>
+        <box size="0.02 0.06 0.02"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== MINI LIFTER LINKS ==================== -->
+
+  <!-- Mast base: fixed to the front of the robot -->
+  <link name="lifter_base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/mini_lifter/lifter_base_link.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="off_white">
+        <color rgba="0.93 0.93 0.87 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.08"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.0413980907940167 0.013942152056987 0.0600213284914187" rpy="0 0 0"/>
+      <mass value="0.0393079384575237"/>
+      <inertia ixx="6.84304303295766E-05"  ixy="5.42724547331535E-07"  ixz="-5.36337682065392E-06"
+               iyy="8.48016019686378E-05"  iyz="4.7818118018353E-06"
+               izz="2.38087185959585E-05"/>
+    </inertial>
+  </link>
+
+  <!-- Lower arm: first prismatic stage that rises from the base -->
+  <link name="lower_arm_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/mini_lifter/lower_arm_Link.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="light_grey">
+        <color rgba="0.80 0.80 0.75 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.04 0.04 0.06"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.00297207763161224 0.00200000000000001 -0.0177219451576623" rpy="0 0 0"/>
+      <mass value="0.00164453096491487"/>
+      <inertia ixx="3.02571682968929E-07"  ixy="6.8863061692628E-26"   ixz="4.84796286329221E-08"
+               iyy="3.19813284853008E-07"  iyz="-9.21866216443372E-25"
+               izz="2.16270177905185E-08"/>
+    </inertial>
+  </link>
+
+  <!-- Upper arm: second prismatic stage that rises from the lower arm -->
+  <link name="upper_arm_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/mini_lifter/upper_arm_Link.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="light_grey">
+        <color rgba="0.80 0.80 0.75 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.04 0.04 0.05"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-0.0219113253754097 2.57948341283107E-05 -0.010291121108454" rpy="0 0 0"/>
+      <mass value="0.00203914058162074"/>
+      <inertia ixx="1.03879008751776E-07"  ixy="3.09760541669947E-09"  ixz="-1.85948719030856E-07"
+               iyy="5.11020650606653E-07"  iyz="1.45485642439303E-09"
+               izz="4.12456670158531E-07"/>
+    </inertial>
+  </link>
+
+  <!-- Carriage: fork/platform that carries the pallet, fixed to upper arm top -->
+  <link name="carriage_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/mini_lifter/carriage_Link.stl"
+              scale="${s} ${s} ${s}"/>
+      </geometry>
+      <material name="off_white">
+        <color rgba="0.93 0.93 0.87 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.08 0.06 0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-1.96162035147815E-05 -0.00253065900804355 -0.0230162495877285" rpy="0 0 0"/>
+      <mass value="0.0400633672396755"/>
+      <inertia ixx="4.03201261331098E-05"  ixy="-6.16668032847232E-08"  ixz="-4.96523345312025E-08"
+               iyy="3.90429559830493E-05"  iyz="-8.44727181435356E-06"
+               izz="5.81746159152063E-05"/>
+    </inertial>
+  </link>
+
+  <!-- ==================== ROBOT JOINTS ==================== -->
+
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+    <origin xyz="0.0 0.0 0.05" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+  <joint name="wheel_right_joint" type="continuous">
+    <parent link="base_link"/>
+    <child  link="wheel_right_link"/>
+    <origin xyz="0.052 -0.095 -0.0025" rpy="0.0 0.0 0.0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <joint name="wheel_left_joint" type="continuous">
+    <parent link="base_link"/>
+    <child  link="wheel_left_link"/>
+    <origin xyz="0.052 0.095 -0.0025" rpy="0.0 0.0 0.0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="caster_link"/>
+    <origin xyz="-0.095 0 -0.0307" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Upper case sits on top of base_link, beneath the lidar -->
+  <joint name="upper_case_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="upper_case_link"/>
+    <origin xyz="0.0 0.0 0.12" rpy="1.5708 0.0 1.5708"/>
+  </joint>
+
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="lidar_link"/>
+    <origin xyz="0.04 0.0 0.18" rpy="0.0 0.0 ${lidar_yaw}"/>
+  </joint>
+
+  <!-- Front-facing camera fixed to base, used for pallet alignment and Aruco -->
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="camera_link"/>
+    <origin xyz="0.1 0.0 0.02" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+  <!-- ==================== MINI LIFTER JOINTS ==================== -->
+
+  <!-- Mast base attached to robot front face, centred vertically on base_link -->
+  <joint name="lifter_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="lifter_base_link"/>
+    <origin xyz="0.13 -0.03 -0.045" rpy="0 0 1.5708"/>
+  </joint>
+
+  <!-- Upper arm: actuated revolute joint from the mast base -->
+  <joint name="upper_arm_joint" type="revolute">
+    <parent link="lifter_base_link"/>
+    <child  link="upper_arm_link"/>
+    <origin xyz="0.07105 -0.004 0.1184" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.172" upper="0.7932" effort="1" velocity="1"/>
+  </joint>
+
+  <!-- Lower arm: passive revolute, mimics upper_arm_joint -->
+  <joint name="lower_arm_joint" type="revolute">
+    <parent link="upper_arm_link"/>
+    <child  link="lower_arm_link"/>
+    <origin xyz="-0.04467 -0.006 -0.02098" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.0033" upper="1.0116" effort="0" velocity="1"/>
+    <mimic joint="upper_arm_joint" multiplier="-1.2795" offset="-0.0033"/>
+  </joint>
+
+  <!-- ==================== LIFTER CAMERA LINKS ==================== -->
+
+  <link name="camera_holder_1_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/camera_holder.stl"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="off_white">
+        <color rgba="0.93 0.93 0.87 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.005"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <link name="camera_holder_2_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/camera_holder.stl"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="off_white">
+        <color rgba="0.93 0.93 0.87 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.005"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <link name="lifter_camera_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://description/meshes/lifter/camera.stl"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.02"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="camera_holder_1_joint" type="fixed">
+    <parent link="upper_case_link"/>
+    <child  link="camera_holder_1_link"/>
+    <origin xyz="-0.025 -0.055 0.095" rpy="0 3.1416 0"/>
+  </joint>
+
+  <joint name="camera_holder_2_joint" type="fixed">
+    <parent link="upper_case_link"/>
+    <child  link="camera_holder_2_link"/>
+    <origin xyz="-0.025 -0.055 0.095" rpy="0 3.1416 0"/>
+  </joint>
+
+  <joint name="lifter_camera_joint" type="fixed">
+    <parent link="upper_case_link"/>
+    <child  link="lifter_camera_link"/>
+    <origin xyz="0.0 0.03 0.082" rpy="0.349 0 0"/>
+  </joint>
+
+  <!-- Carriage slides along Z, driven passively by upper_arm_joint via mimic -->
+  <joint name="carriage_joint" type="prismatic">
+    <parent link="lifter_base_link"/>
+    <child  link="carriage_link"/>
+    <origin xyz="0.0324999999999826 -0.0172500000000001 0.0609295347073277" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.015" upper="0.06932" effort="0" velocity="0.5"/>
+    <mimic joint="upper_arm_joint" multiplier="0.08741" offset="0"/>
+  </joint>
+
+  <!-- ==================== MATERIALS ==================== -->
+  <material name="dark_grey">
+    <color rgba="0.3 0.3 0.3 1.0"/>
+  </material>
+  <material name="grey">
+    <color rgba="0.5 0.5 0.5 1.0"/>
+  </material>
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+  <material name="off_white">
+    <color rgba="0.93 0.93 0.87 1.0"/>
+  </material>
+  <material name="light_grey">
+    <color rgba="0.80 0.80 0.75 1.0"/>
+  </material>
+
+</robot>

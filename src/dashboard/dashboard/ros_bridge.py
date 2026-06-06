@@ -493,19 +493,25 @@ class RosBridge:
 
     def _cb_map(self, msg) -> None:
         try:
-            png = self._map_to_png(msg)
+            w, h = msg.info.width, msg.info.height
+            res = float(msg.info.resolution)
+            origin = msg.info.origin.position
+            data = np.array(msg.data, dtype=np.int8).reshape((h, w))
+            # Recorta el relleno gris → el mapa llena el espacio del dashboard.
+            data, ox, oy, cw, ch = self._crop_grid_to_content(
+                data, float(origin.x), float(origin.y), res)
+            png = self._grid_array_to_png(data)
         except Exception as exc:  # noqa: BLE001
             self._node.get_logger().warning(f"Map conversion failed: {exc}")
             return
-        origin = msg.info.origin.position
         with self._lock:
             self._latest_map = png
             self._map_info = {
-                "origin_x": round(float(origin.x), 4),
-                "origin_y": round(float(origin.y), 4),
-                "resolution": round(float(msg.info.resolution), 6),
-                "width": int(msg.info.width),
-                "height": int(msg.info.height),
+                "origin_x": round(ox, 4),
+                "origin_y": round(oy, 4),
+                "resolution": round(res, 6),
+                "width": cw,
+                "height": ch,
                 "source": "live",
             }
 
@@ -631,18 +637,22 @@ class RosBridge:
             self._node.get_logger().warning(f"Could not load PGM {pgm_file}: {exc}")
             return
 
-        # PGM from map_saver: row 0 = top of image (highest Y world coord) — no flip needed.
-        png = self._numpy_gray_to_png(gray)
-
         origin = meta.get("origin", [-10.0, -10.0, 0.0])
         resolution = float(meta.get("resolution", 0.05))
+        ox = float(origin[0]) if isinstance(origin, list) else -10.0
+        oy = float(origin[1]) if isinstance(origin, list) else -10.0
+
+        # PGM from map_saver: row 0 = top of image (highest Y world coord) — no flip
+        # needed. Recorta el relleno gris para que el mapa llene el dashboard.
+        gray, ox, oy = self._crop_gray_to_content(gray, ox, oy, resolution)
+        png = self._numpy_gray_to_png(gray)
         h, w = gray.shape
 
         with self._lock:
             self._latest_map = png
             self._map_info = {
-                "origin_x": float(origin[0]) if isinstance(origin, list) else -10.0,
-                "origin_y": float(origin[1]) if isinstance(origin, list) else -10.0,
+                "origin_x": round(ox, 4),
+                "origin_y": round(oy, 4),
                 "resolution": resolution,
                 "width": w,
                 "height": h,
@@ -692,10 +702,14 @@ class RosBridge:
         return arr.reshape((h, w))
 
     def _map_to_png(self, msg) -> bytes:
-        """Convert nav_msgs/OccupancyGrid to a PNG bytes image."""
+        """Convert nav_msgs/OccupancyGrid to a PNG bytes image (full grid)."""
         w, h = msg.info.width, msg.info.height
         data = np.array(msg.data, dtype=np.int8).reshape((h, w))
+        return self._grid_array_to_png(data)
 
+    def _grid_array_to_png(self, data: np.ndarray) -> bytes:
+        """Convert an OccupancyGrid int8 array (row 0 = bottom / lowest Y) to PNG."""
+        h, w = data.shape
         # OccupancyGrid semantics:
         #  -1  → unknown  → gray (128)
         #   0  → free     → white (255)
@@ -711,6 +725,77 @@ class RosBridge:
         img = np.flipud(img)
 
         return self._numpy_gray_to_png(img)
+
+    @staticmethod
+    def _occupied_bbox(occ: np.ndarray):
+        """Bbox (r0,r1,c0,c1) de las celdas True, ignorando celdas AISLADAS (ruido del
+        scan): cada celda contada debe tener ≥1 vecino ocupado (8-conectividad). Esto
+        mantiene paredes y muescas (contiguas) y descarta píxeles sueltos lejanos.
+        Devuelve None si no hay contenido contiguo."""
+        if occ.sum() < 2:
+            return None
+        oi = occ.astype(np.int16)
+        nb = np.zeros_like(oi)
+        nb[1:, :] += oi[:-1, :]; nb[:-1, :] += oi[1:, :]
+        nb[:, 1:] += oi[:, :-1]; nb[:, :-1] += oi[:, 1:]
+        nb[1:, 1:] += oi[:-1, :-1]; nb[:-1, :-1] += oi[1:, 1:]
+        nb[1:, :-1] += oi[:-1, 1:]; nb[:-1, 1:] += oi[1:, :-1]
+        content = occ & (nb >= 1)
+        if not content.any():
+            content = occ
+        rows = np.where(np.any(content, axis=1))[0]
+        cols = np.where(np.any(content, axis=0))[0]
+        return int(rows[0]), int(rows[-1]), int(cols[0]), int(cols[-1])
+
+    @staticmethod
+    def _crop_grid_to_content(data: np.ndarray, origin_x: float, origin_y: float,
+                              resolution: float, margin_cells: int = 4, occ_min: int = 50):
+        """Recorta la grilla al bbox de las PAREDES (celdas OCUPADAS) + un margen, NO a
+        todo lo conocido: el espacio LIBRE que el LiDAR marca al ver por una abertura
+        forma una mancha que se sale del almacén y no interesa. Las paredes (incl. las
+        muescas de las bahías de camión a la izquierda) definen la extensión real.
+        Ajusta el origen para que los overlays (robot, scan, waypoints) sigan cuadrando.
+        Devuelve (data', ox', oy', w', h').
+        """
+        h, w = data.shape
+        bbox = RosBridge._occupied_bbox(data >= occ_min)   # paredes
+        if bbox is None:
+            # aún sin paredes claras → cae al bbox de lo conocido (mapeo temprano)
+            known = data >= 0
+            if not known.any():
+                return data, origin_x, origin_y, w, h
+            rows = np.where(np.any(known, axis=1))[0]
+            cols = np.where(np.any(known, axis=0))[0]
+            bbox = (int(rows[0]), int(rows[-1]), int(cols[0]), int(cols[-1]))
+        r0, r1, c0, c1 = bbox
+        r0 = max(0, r0 - margin_cells); r1 = min(h - 1, r1 + margin_cells)
+        c0 = max(0, c0 - margin_cells); c1 = min(w - 1, c1 + margin_cells)
+        cropped = data[r0:r1 + 1, c0:c1 + 1]
+        # row 0 = Y más bajo, col 0 = X más bajo → la esquina inf-izq se desplaza.
+        new_ox = origin_x + c0 * resolution
+        new_oy = origin_y + r0 * resolution
+        return cropped, new_ox, new_oy, int(cropped.shape[1]), int(cropped.shape[0])
+
+    @staticmethod
+    def _crop_gray_to_content(gray: np.ndarray, origin_x: float, origin_y: float,
+                              resolution: float, margin_cells: int = 4):
+        """Igual que _crop_grid_to_content pero sobre una imagen GRIS de mapa (fila 0 =
+        arriba / Y más alto, como el PGM de map_saver). Recorta al bbox de las PAREDES
+        (oscuro); el libre (claro) y el desconocido (gris medio) NO cuentan, así la
+        mancha de espacio libre fuera del almacén queda fuera."""
+        h, w = gray.shape
+        bbox = RosBridge._occupied_bbox(gray < 60)   # paredes = oscuro
+        if bbox is None:
+            return gray, origin_x, origin_y
+        r0, r1, c0, c1 = bbox
+        r0 = max(0, r0 - margin_cells); r1 = min(h - 1, r1 + margin_cells)
+        c0 = max(0, c0 - margin_cells); c1 = min(w - 1, c1 + margin_cells)
+        cropped = gray[r0:r1 + 1, c0:c1 + 1]
+        # fila 0 = Y más alto: la fila INFERIOR del recorte (r1) define la esquina
+        # inferior-izquierda en mundo.
+        new_ox = origin_x + c0 * resolution
+        new_oy = origin_y + (h - 1 - r1) * resolution
+        return cropped, new_ox, new_oy
 
     @staticmethod
     def _numpy_gray_to_png(gray: np.ndarray) -> bytes:

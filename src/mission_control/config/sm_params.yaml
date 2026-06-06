@@ -4,16 +4,15 @@ state_machine_node:
     # installed under the mission_control share directory.
     zones_file: ""
 
-    # SCAN_QR: per-candidate budget. At each roller SEARCH OSCILLATES in place
-    # (osc_* params below) watching /qr_detected; if no fresh QR decodes within
-    # this many seconds it gives up on that roller and drives to the NEXT one.
-    # QR decoding flickers with distance/angle/lighting and the parked pose is
-    # often a bad angle, so the sweep finds a decodable view; this is the time
-    # to allow per roller before moving on.
+    # SCAN_QR: per-candidate budget. SEARCH navigates to each roller, PARKS
+    # facing the pallet, and watches /qr_detected for a decode read AFTER it
+    # arrived (approach-time decodes from a neighbour are ignored). If no
+    # qualifying QR decodes within this many seconds it gives up on that roller
+    # and drives to the NEXT one.
     #   >0 ⇒ move to the next roller after this long (normal roller-by-roller).
-    #   <=0 ⇒ oscillate FOREVER at the candidate (never advances) — only for a
+    #   <=0 ⇒ wait FOREVER at the candidate (never advances) — only for a
     #         single spot you know holds the pallet.
-    scan_qr_timeout: 15.0
+    scan_qr_timeout: 5.0
 
     # ALIGN_TO_PALLET: hard ceiling on how long we let qr_quad_alignment
     # run before considering alignment failed.

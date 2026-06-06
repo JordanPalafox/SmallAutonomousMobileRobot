@@ -1,11 +1,15 @@
 """SEARCH — mission step 1: find the pallet.
 
 Visits the mission's candidate waypoints in order; at each one it navigates
-there and then STAYS PARKED (no motion) watching ``/qr_detected`` for a freshly
-decoded payload. The first candidate that yields a QR wins — its name and
-payload are left on the blackboard for the pick / nav-to-truck steps, and SEARCH
-hands off to PICK with the robot still facing the pallet, so PICK's alignment
-only has to fine-tune (not recover from a big offset).
+there and ONLY THEN — parked at the waypoint, facing the pallet — opens the QR
+window, watching ``/qr_detected`` for a payload decoded from that pose. Anything
+decoded DURING the approach is ignored on purpose: with the rollers in a row a
+neighbour's QR drifts through the frame en route, and accepting it would hand
+off to PICK at the wrong candidate before the robot ever arrives. The first
+candidate that yields a post-arrival QR wins — its name and payload are left on
+the blackboard for the pick / nav-to-truck steps, and SEARCH hands off to PICK
+with the robot still facing the pallet, so PICK's alignment only has to
+fine-tune (not recover from a big offset).
 
 No oscillation here on purpose: sweeping to hunt for the QR made the robot
 decode it far off-centre (in the lateral edge of the frame) and enter PICK badly
@@ -141,10 +145,6 @@ class Search(DebuggableState):
             candidate = queue.popleft()
             blackboard["current_candidate"] = candidate
 
-            # Accept a QR decoded any time from the moment we START heading to
-            # THIS candidate (covers the approach, where the flaky decoder often
-            # succeeds), but not one read at a PREVIOUS candidate.
-            nav_started_at = time.monotonic()
             nav_outcome = navigate(self._debug, blackboard, self._publish_goal, candidate, tag="SEARCH")
             if nav_outcome == "stop":
                 return "stop"
@@ -157,7 +157,14 @@ class Search(DebuggableState):
                 logger.info("[SEARCH] scan_qr=false — accepting %s without QR.", candidate)
                 return success
 
-            if self._scan_qr_at(blackboard, candidate, valid_from=nav_started_at):
+            # The QR window opens ONLY now that we've reached the waypoint and are
+            # parked facing the pallet. Anything decoded DURING the approach is
+            # ignored: it is usually a neighbouring roller's QR drifting through
+            # the frame, and accepting it would send us to PICK at the wrong
+            # candidate before we ever arrive here. valid_from = arrival time, so
+            # only a fresh decode read from THIS parked pose counts.
+            arrived_at = time.monotonic()
+            if self._scan_qr_at(blackboard, candidate, valid_from=arrived_at):
                 return success
             if self._debug.aborted:
                 self._publish_goal("stop")
@@ -169,16 +176,18 @@ class Search(DebuggableState):
     # ------------------------------------------------------------------
     def _scan_qr_at(self, blackboard: Blackboard, candidate: str,
                     valid_from: float) -> bool:
-        """Stay parked and watch /qr_detected for a payload decoded for THIS
-        candidate (timestamp >= ``valid_from``, which spans the approach), then
-        return True on the first qualifying decode. No motion is commanded — the
-        robot keeps facing the pallet so PICK starts roughly centred.
+        """Stay parked and watch /qr_detected for a payload decoded AFTER the
+        robot reached THIS candidate (timestamp >= ``valid_from`` = arrival
+        time), then return True on the first qualifying decode. No motion is
+        commanded — the robot keeps facing the pallet so PICK starts roughly
+        centred.
 
-        ``valid_from`` is when the robot started heading here, so an approach-time
-        decode counts while a QR read at a PREVIOUS candidate (older timestamp)
-        does not. The per-candidate budget is ``scan_timeout``: >0 returns False
-        on expiry so the caller moves to the next roller; <=0 waits indefinitely
-        at this candidate (the search then never advances past it).
+        ``valid_from`` is the ARRIVAL time, so a QR glimpsed during the approach
+        (e.g. a neighbouring roller's pallet) or read at a PREVIOUS candidate
+        (both older timestamps) does NOT count — only a decode produced from this
+        parked pose. The per-candidate budget is ``scan_timeout``: >0 returns
+        False on expiry so the caller moves to the next roller; <=0 waits
+        indefinitely at this candidate (the search then never advances past it).
 
         Returns True on success; on abort it returns False and the caller
         re-checks the abort flag.
@@ -186,14 +195,6 @@ class Search(DebuggableState):
         scan_started_at = time.monotonic()
         wait_forever = self._scan_timeout <= 0.0
         deadline = None if wait_forever else scan_started_at + self._scan_timeout
-
-        # If a qualifying decode already arrived during the approach, take it now.
-        qr0 = bb_get(blackboard, "qr_detected")
-        qr0_t = bb_get(blackboard, "qr_detected_at", 0.0)
-        if qr0 and qr0_t >= valid_from:
-            logger.info("[SEARCH] QR %r already decoded en route to %s — accepting.", qr0, candidate)
-            blackboard["qr_value"] = qr0
-            return True
 
         logger.info("[SEARCH] parked at %s, waiting for QR (timeout=%s)",
                     candidate, "none" if wait_forever else f"{self._scan_timeout:.1f}s")

@@ -161,7 +161,7 @@
   <joint name="cam_holder_joint" type="fixed">
     <parent link="mast_inner_link"/>
     <child  link="cam_holder_link"/>
-    <origin xyz="0 0 0.105" rpy="0.7854 0 0"/>
+    <origin xyz="0 0 0.105" rpy="0.3491 0 0"/>  <!-- tilt camara 20deg hacia abajo (antes 45deg=0.7854) -->
   </joint>
 
   <!-- Camera: fixed to pan holder, sits on top of bracket

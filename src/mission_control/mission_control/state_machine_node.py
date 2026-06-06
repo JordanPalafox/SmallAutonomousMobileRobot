@@ -85,7 +85,7 @@ class StateMachineNode(Node):
         # ── Parameters ────────────────────────────────────────────────────
         self.declare_parameter("zones_file", "")
         self.declare_parameter("waypoints_file", "~/ros2_maps/waypoints.yaml")
-        self.declare_parameter("scan_qr_timeout", 15.0)
+        self.declare_parameter("scan_qr_timeout", 5.0)
         self.declare_parameter("alignment_timeout", 30.0)
         self.declare_parameter("lifter_timeout", 8.0)
         self.declare_parameter("debug_step_mode_default", False)
@@ -285,6 +285,10 @@ class StateMachineNode(Node):
         # Logo lateral centre error (px) for the rack approach centering.
         self.create_subscription(Point, "/approach_stop/center_error",
                                  self._cb_approach_center, qos_profile_sensor_data)
+        # QR lateral centre error (px) from qr_quad_alignment — the PICK creep
+        # prefers this over the logo while the QR is still visible.
+        self.create_subscription(Point, "/qr_center_error",
+                                 self._cb_qr_center, qos_profile_sensor_data)
 
         self._pub_goal       = self.create_publisher(String, "/goal_waypoint",   qos)
         self._pub_cmd        = self.create_publisher(Twist,  "/cmd_vel_in",      qos)
@@ -372,6 +376,7 @@ class StateMachineNode(Node):
         # across the executor and SM threads (no torn read of two separate keys).
         bb["approach_stop_signal"] = None
         bb["logo_center_error"]    = None    # (px, stamp) logo lateral error, for rack approach centering
+        bb["qr_center_error"]      = None    # (px, stamp) QR lateral error, preferred by the PICK creep while visible
 
     # ------------------------------------------------------------------ waypoints
     @staticmethod
@@ -482,6 +487,13 @@ class StateMachineNode(Node):
         minus frame centre. The rack approach steers on this (stamped so the
         creep uses only a FRESH reading) to keep the pallet centred."""
         self._blackboard["logo_center_error"] = (float(msg.x), time.monotonic())
+
+    def _cb_qr_center(self, msg: Point) -> None:
+        """QR lateral centre error (px) from qr_quad_alignment — x = QR cx minus
+        the dock target centre (same sign as the logo error). The PICK creep
+        prefers this while FRESH so it keeps centring on the QR, and falls back
+        to the logo error when the QR leaves the frame up close."""
+        self._blackboard["qr_center_error"] = (float(msg.x), time.monotonic())
 
     def _cb_voice(self, msg: String) -> None:
         cmd = msg.data.strip().lower()

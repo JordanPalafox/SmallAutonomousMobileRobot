@@ -44,7 +44,7 @@ def navigate(
     # velocity smoother holds nav's last command and would coast the robot on.
     seen_active = False
     active = ("FOLLOWING", "ALIGNING", "WALL_FOLLOWING", "RETURNING_LEAVE",
-              "WAITING_FOR_CLEAR")
+              "WAITING_FOR_CLEAR", "WAITING_FOR_PATH")
     while True:
         if debug.aborted:
             publish_goal("stop")
@@ -275,14 +275,15 @@ def drive_until_approach_stop(
     """Creep into the load, stopping by VISION before contact, with the wheel
     stall and the time limit as safety fallbacks.
 
-    Optional logo CENTERING (``center_kp`` > 0): instead of the constant ``w``,
-    steer ``w = -center_kp * logo_center_error`` (px, from
-    blackboard['logo_center_error'] published by logo_stop_debug, fresher than
-    ``center_fresh_s``, capped at ``center_w_max``, ignored within
-    ``center_deadband_px``) so the robot stays aligned with the pallet while
-    creeping — used by PICK_FROM_RACK so the lifter enters the pallet straight
-    (the QR has left the frame up close). ``center_kp`` = 0 keeps the constant
-    ``w`` (roller behaviour).
+    Optional CENTERING (``center_kp`` > 0): instead of the constant ``w``,
+    steer ``w = -center_kp * err_px`` to keep the pallet centred while creeping
+    so the lifter enters straight. The error source is QR-PREFERRED: use
+    blackboard['qr_center_error'] (px, from qr_quad_alignment) while the QR is
+    still visible (fresher than ``center_fresh_s``), and fall back to
+    blackboard['logo_center_error'] (px, from logo_stop_debug) once the QR has
+    left the frame up close. Both carry the same sign convention, so the same
+    gain applies; the command is capped at ``center_w_max`` and ignored within
+    ``center_deadband_px``. ``center_kp`` = 0 keeps the constant ``w``.
 
     This is the brownout fix for the PICK forward approach: the old path only
     stopped once the wheels stalled — i.e. once the robot had already crashed
@@ -312,6 +313,7 @@ def drive_until_approach_stop(
     deadline = t0 + max_duration
     grace_until = t0 + grace
     stalled = 0
+    last_center_src = None
     logger.info("[%s] creep v=%.3f for <=%.1fs (vision_stop=%s, fallback stall < "
                 "%.2f rad/s)", tag, v, max_duration, vision_enabled, stall_speed)
     try:
@@ -321,18 +323,36 @@ def drive_until_approach_stop(
             debug.wait_if_paused()
             now = time.monotonic()
 
-            # Angular command: optional logo CENTERING (center_kp>0) overrides the
-            # constant w — steer to bring the logo to the frame centre so the
-            # lifter enters the pallet straight. Only a FRESH logo reading steers;
-            # within the deadband or with no fresh reading we drive straight.
+            # Angular command: optional CENTERING (center_kp>0) overrides the
+            # constant w — steer to bring the pallet to the frame centre so the
+            # lifter enters straight. PREFER the QR lateral error while the QR is
+            # still visible (fresh); fall back to the logo center error once the
+            # QR has left the frame up close. Both errors share the same sign
+            # convention (object_cx − target; +ve = right), so the same gain and
+            # clamp apply to either source. Within the deadband or with no fresh
+            # reading from either we drive straight.
             w_cmd = w
             if center_kp > 0.0:
                 w_cmd = 0.0
-                ce = bb_get(blackboard, "logo_center_error")
-                if ce is not None:
-                    err_px, ce_stamp = ce
-                    if (now - ce_stamp) <= center_fresh_s and abs(err_px) > center_deadband_px:
-                        w_cmd = max(-center_w_max, min(center_w_max, -center_kp * err_px))
+                err_px = None
+                src = None
+                qe = bb_get(blackboard, "qr_center_error")
+                if qe is not None:
+                    q_err, q_stamp = qe
+                    if (now - q_stamp) <= center_fresh_s:
+                        err_px, src = q_err, "QR"
+                if err_px is None:
+                    ce = bb_get(blackboard, "logo_center_error")
+                    if ce is not None:
+                        l_err, l_stamp = ce
+                        if (now - l_stamp) <= center_fresh_s:
+                            err_px, src = l_err, "logo"
+                if src != last_center_src:
+                    if src is not None:
+                        logger.info("[%s] centering on %s error.", tag, src)
+                    last_center_src = src
+                if err_px is not None and abs(err_px) > center_deadband_px:
+                    w_cmd = max(-center_w_max, min(center_w_max, -center_kp * err_px))
             publish_cmd(v, w_cmd)
 
             # 1) Vision stop (primary) — stop BEFORE contact. Only honour a
