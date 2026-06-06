@@ -35,6 +35,22 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _flat_obstacles(path):
+    """Lee static_layout_*.yaml y lo aplana a [cx,cy,sx,sy,yaw_rad]×N (yaw en rad)
+    para el param aruco_static_obstacles del slam_node. [] si no existe."""
+    import math
+    import yaml
+    try:
+        d = yaml.safe_load(open(path))
+        flat = []
+        for o in d.get('obstacles', []):
+            flat += [float(o['x']), float(o['y']), float(o['sx']), float(o['sy']),
+                     math.radians(float(o.get('yaw_deg', 0.0)))]
+        return flat
+    except Exception:
+        return []
+
+
 def generate_launch_description():
     pkg_desc = get_package_share_directory('description')
     pkg_slam = get_package_share_directory('slam')
@@ -46,6 +62,11 @@ def generate_launch_description():
     slam_params_path       = os.path.join(pkg_slam, 'config', 'slam_params.yaml')
     nav_params_path        = os.path.join(pkg_nav,  'config', 'nav_params.yaml')
     rviz_cfg_path          = os.path.join(pkg_slam, 'config', 'slam.rviz')
+    # Layout estático del gemelo digital (racks/rollers/camiones) → aplanado
+    # [cx,cy,sx,sy,yaw_rad]×N para que slam_node lo estampe al anclar. SIM = frame del
+    # .world (exacto). Generado por scripts/extract_static_layout.py.
+    static_layout_sim = _flat_obstacles(
+        os.path.join(pkg_perception, 'config', 'static_layout_sim.yaml'))
 
     # ── Args ──────────────────────────────────────────────────────────
     world_name_arg = DeclareLaunchArgument(
@@ -108,6 +129,12 @@ def generate_launch_description():
             # (localization-only → anchored_=true, no re-mapea ni re-ancla).
             'start_mode':     start_mode,
             'map_yaml':       map_yaml,
+            # Gemelo digital como fuente de verdad: al anclar, estampa el perímetro
+            # canónico (4.85×3.65) + los racks/rollers/camiones del .world (exacto en
+            # sim) y protege esas paredes del ruido del scan.
+            'aruco_stamp_walls':       True,
+            'aruco_static_obstacles':  static_layout_sim,
+            'aruco_full_clean':        True,   # tras encajar, mapa = solo gemelo (full limpio)
             # Pose inicial = spawn del robot en gz (gazebo.launch.py -x 0.8255 -y
             # 2.8927, yaw 0). El frame gz == frame canónico ArUco (esquina SW en
             # 0,0), así que en NAVEGACIÓN el robot arranca ya localizado sobre el

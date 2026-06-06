@@ -855,24 +855,6 @@
           <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
         </collision>
       </link></model>
-    <model name="aruco_22"><static>true</static>
-      <pose>4.8450 0.3700 0.0450 3.14159 -1.57080 3.14159</pose>
-      <link name="link">
-        <visual name="vis">
-          <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
-          <material>
-            <diffuse>1 1 1 1</diffuse>
-            <pbr><metal>
-              <albedo_map>model://description/textures/arucos/22.jpg</albedo_map>
-              <metalness>0.0</metalness>
-              <roughness>1.0</roughness>
-            </metal></pbr>
-          </material>
-        </visual>
-        <collision name="col">
-          <geometry><box><size>0.09 0.09 0.003</size></box></geometry>
-        </collision>
-      </link></model>
     <model name="aruco_17"><static>true</static>
       <pose>4.8450 3.1450 0.0450 3.14159 -1.57080 3.14159</pose>
       <link name="link">

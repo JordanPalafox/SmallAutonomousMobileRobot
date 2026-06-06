@@ -228,7 +228,9 @@ def generate_launch_description():
             'rack_state':    'PICK_FROM_RACK',
             # ROLLER profile (default) — used during PICK.
             'template_path': os.path.join(pkg_perc, 'config', 'e80_logo_ref.png'),
-            'stop_scale':    0.85,
+            # 0.78 (was 0.85): más margen para que el match de escala del logo se
+            # considere exitoso aunque el logo se vea algo más chico de lo ideal.
+            'stop_scale':    0.78,
             'match_thr':     0.45,
             'roi_top_pct':   50,
             'hold_frames':   4,

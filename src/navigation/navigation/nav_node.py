@@ -249,6 +249,7 @@ class NavNode(Node):
             self._resolution = 0.05
 
         # ── Load waypoints ─────────────────────────────────────────────
+        self._waypoints_path = waypoints_yaml
         self.get_logger().info(f'Loading waypoints from {waypoints_yaml}')
         try:
             self._waypoints = load_waypoints(waypoints_yaml)
@@ -258,6 +259,10 @@ class NavNode(Node):
         except Exception as exc:
             self.get_logger().error(f'Failed to load waypoints: {exc}')
             self._waypoints = {}
+        # File mtime at load, so the background watcher (below) can auto-reload
+        # when the file changes — dashboard, waypoint_recorder, or a manual edit
+        # — WITHOUT relaunching nav. 0.0 = missing/unreadable.
+        self._waypoints_mtime = self._wp_file_mtime()
 
         # ── Navigation state ───────────────────────────────────────────
         self._pose_x: Optional[float] = None
@@ -365,6 +370,12 @@ class NavNode(Node):
         # writes a new waypoint to waypoints.yaml).
         self.create_service(Trigger, '~/reload_waypoints', self._reload_waypoints_cb)
 
+        # Auto-reload: poll the waypoints file mtime at 1 Hz and reload when it
+        # changes, so waypoints added by the dashboard, the waypoint_recorder, or
+        # a manual edit become addressable WITHOUT relaunching nav (the explicit
+        # ~/reload_waypoints service stays as a belt-and-suspenders trigger).
+        self.create_timer(1.0, self._watch_waypoints)
+
         # ── Publishers ─────────────────────────────────────────────────
         self._cmd_vel_pub  = self.create_publisher(Twist,       '/cmd_vel_in',       10)
         self._plan_pub     = self.create_publisher(Path,        '/plan',             10)
@@ -460,6 +471,7 @@ class NavNode(Node):
         try:
             path = os.path.expanduser(self.get_parameter('waypoints_yaml').value)
             self._waypoints = load_waypoints(path)
+            self._waypoints_mtime = self._wp_file_mtime()   # sync so the watcher won't re-fire
             self.get_logger().info(
                 f'Waypoints reloaded: {list(self._waypoints.keys())}'
             )
@@ -470,6 +482,32 @@ class NavNode(Node):
             response.success = False
             response.message = f'reload failed: {exc}'
         return response
+
+    def _wp_file_mtime(self) -> float:
+        """mtime of the waypoints file, or 0.0 if missing/unreadable."""
+        try:
+            return os.path.getmtime(self._waypoints_path)
+        except OSError:
+            return 0.0
+
+    def _watch_waypoints(self) -> None:
+        """1 Hz: reload waypoints if the file changed on disk — no relaunch.
+        On a read failure (e.g. caught mid-write) it leaves the mtime unchanged
+        so it retries next tick instead of going stale on a partial file."""
+        mtime = self._wp_file_mtime()
+        if mtime == 0.0 or mtime == self._waypoints_mtime:
+            return
+        try:
+            wps = load_waypoints(self._waypoints_path)
+        except Exception as exc:
+            self.get_logger().warn(f'Waypoint auto-reload failed (will retry): {exc}')
+            return
+        self._waypoints = wps
+        self._waypoints_mtime = mtime
+        self.get_logger().info(
+            f'Waypoints auto-reloaded ({len(wps)}): {list(wps.keys())}'
+        )
+        self._publish_waypoint_markers()
 
     def _system_mode_cb(self, msg: String) -> None:
         """Track the current system mode; cancel navigation if we leave it."""

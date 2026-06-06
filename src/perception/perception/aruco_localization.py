@@ -255,6 +255,17 @@ class ArucoLocalizationNode(Node):
         # Apagar con publish_debug:=false ... mejor un flag propio: debug_pnp.
         self.declare_parameter('debug_pnp', True)
         self.declare_parameter('debug_pnp_period', 1.5)   # s entre volcados (no floodear)
+        # HÍBRIDO contra el flip de 90°: con >=2 markers se estima la pose del robot por
+        # un ajuste rígido 2D de POSICIONES de markers (inmune a la orientación/flip de
+        # PnP); con 1 marker se cae al single-marker (floor-constraint). NO exige 2.
+        # ArUco = SOLO anclar el mapa (FASE 1, stream /aruco_markers) + rescatar el MCL
+        # cuando se pierde (FASE 2, /aruco_pose_estimate). La pose per-frame se publica
+        # SOLO cuando es CONFIABLE: ajuste por POSICIONES de ≥2 markers (inmune al flip
+        # de PnP). Con <2 markers / fit pobre NO se publica pose (nada de single-marker
+        # volteable). Así el rescate nunca re-siembra hacia una pose chueca.
+        self.declare_parameter('multi_marker_enabled', True)
+        self.declare_parameter('multi_marker_baseline_gate', 0.25)  # m; baseline mínimo de markers para fiarse del fit
+        self.declare_parameter('multi_marker_max_rmse', 0.10)        # m; RMS máximo del fit (si no, no publica)
 
         image_topic = str(self.get_parameter('image_topic').value)
         qos_name = str(self.get_parameter('qos').value).lower()
@@ -280,6 +291,9 @@ class ArucoLocalizationNode(Node):
         self._debug_pnp = bool(self.get_parameter('debug_pnp').value)
         self._debug_pnp_period = float(self.get_parameter('debug_pnp_period').value)
         self._last_pnp_log = 0.0
+        self._multi_enabled = bool(self.get_parameter('multi_marker_enabled').value)
+        self._multi_baseline_gate = float(self.get_parameter('multi_marker_baseline_gate').value)
+        self._multi_max_rmse = float(self.get_parameter('multi_marker_max_rmse').value)
 
         # ---- Extrinseco base_link -> camara optica ----
         # Frame optico sin tilt respecto a base_link (Z=adelante, X=derecha,
@@ -432,6 +446,45 @@ class ArucoLocalizationNode(Node):
                 f'pos=({xy[0]:.2f},{xy[1]:.2f}) dist={dist:.2f}m')
         return float(xy[0]), float(xy[1]), float(yaw), dist
 
+    @staticmethod
+    def _fit_robot_pose_2d(src_list, dst_list):
+        """Ajuste rígido 2D (Umeyama, sin escala): halla (x,y,yaw) tal que
+        dst ≈ Rz(yaw)·src + (x,y). src = posiciones de markers en base_link,
+        dst = sus posiciones canónicas (map). La transformación ES la pose del
+        robot (el origen de base_link es (0,0)). INMUNE al flip/inplane de PnP
+        (solo usa posiciones). Devuelve (x, y, yaw, rmse, baseline, residuos)."""
+        src = np.asarray(src_list, dtype=np.float64).reshape(-1, 2)
+        dst = np.asarray(dst_list, dtype=np.float64).reshape(-1, 2)
+        sc = src.mean(axis=0); dc = dst.mean(axis=0)
+        S = (dst - dc).T @ (src - sc)
+        yaw = math.atan2(S[1, 0] - S[0, 1], S[0, 0] + S[1, 1])
+        cc, ss = math.cos(yaw), math.sin(yaw)
+        R = np.array([[cc, -ss], [ss, cc]])
+        t = dc - R @ sc
+        pred = (R @ src.T).T + t
+        res = np.sqrt(np.sum((pred - dst) ** 2, axis=1))
+        rmse = float(np.sqrt(np.mean(res ** 2)))
+        n = len(src)
+        baseline = 0.0
+        for i in range(n):
+            for j in range(i + 1, n):
+                baseline = max(baseline, float(np.linalg.norm(src[i] - src[j])))
+        return float(t[0]), float(t[1]), float(yaw), rmse, baseline, res
+
+    @classmethod
+    def _fit_robot_pose_2d_robust(cls, src_list, dst_list, inlier_tol):
+        """Como _fit_robot_pose_2d pero con rechazo greedy de 1+ outliers
+        (drop-worst): descarta el marker con mayor residuo mientras supere
+        inlier_tol y queden >=2. Devuelve (x, y, yaw, rmse, baseline, n)."""
+        src = list(src_list); dst = list(dst_list)
+        while len(src) >= 2:
+            x, y, yaw, rmse, baseline, res = cls._fit_robot_pose_2d(src, dst)
+            k = int(np.argmax(res))
+            if res[k] <= inlier_tol or len(src) <= 2:
+                return x, y, yaw, rmse, baseline, len(src)
+            del src[k]; del dst[k]
+        return None
+
     def _image_cb(self, msg: Image) -> None:
         frame = imgmsg_to_bgr(self._bridge, msg)
         if frame is None:
@@ -451,19 +504,27 @@ class ArucoLocalizationNode(Node):
         if do_log:
             self._last_pnp_log = now_s
 
-        # ---- Pose del robot por marker (UN marker basta: floor-constraint) ----
-        # Cada marker da (x,y,yaw) completo (yaw resuelto por la restriccion de piso,
-        # ver _robot_pose_from_marker). Se fusionan los visibles ponderando por 1/dist^2.
-        xs, ys, yaws, weights, used_markers = [], [], [], [], []
+        # ---- Pose del robot: MULTI (≥2, inmune al flip) primario, SINGLE-marker respaldo ----
+        # Como en SIM (donde con 1 aruco funciona muy bien): con ≥2 markers se ajusta por
+        # POSICIONES (inmune al flip de PnP); con 1 marker se usa el single-marker con
+        # restricción de piso (_robot_pose_from_marker, auto-inplane). El single-marker
+        # depende de los extrínsecos de cámara correctos (cam_pitch/cam_xyz) — por eso en
+        # el real hay que ponerlos como en el gemelo/URDF (pitch ~20°).
+        base_xy, canon_xy, dists, used_markers, sm_dets = [], [], [], [], []
         for det in dets:
-            est = self._robot_pose_from_marker(det, log=do_log)
-            if est is None:
+            mid = int(det['id'])
+            T = self._map.get(mid)
+            if T is None:
                 continue
-            x, y, yaw, dist = est
-            w = 1.0 / (dist * dist)
-            xs.append(x); ys.append(y); yaws.append(yaw); weights.append(w)
-            mpos = self._map[int(det['id'])][:3, 3]
-            used_markers.append((int(det['id']), float(mpos[0]), float(mpos[1]), float(mpos[2])))
+            tvec = np.asarray(det['tvec'], dtype=np.float64).flatten()
+            dist = float(np.linalg.norm(tvec))
+            if dist > self._max_range or dist <= 1e-3:
+                continue
+            p_base = (self._T_base_cam @ np.array([tvec[0], tvec[1], tvec[2], 1.0]))[:2]
+            base_xy.append(np.asarray(p_base, float)); canon_xy.append(T[:2, 3]); dists.append(dist)
+            mpos = T[:3, 3]
+            used_markers.append((mid, float(mpos[0]), float(mpos[1]), float(mpos[2])))
+            sm_dets.append(det)
         used = len(used_markers)
 
         if self._pub_debug is not None:
@@ -476,25 +537,45 @@ class ArucoLocalizationNode(Node):
         if used < self._min_markers:
             return
 
-        w = np.asarray(weights)
-        wsum = float(w.sum())
-        x_f = float(np.dot(w, xs) / wsum)
-        y_f = float(np.dot(w, ys) / wsum)
-        s = float(np.dot(w, np.sin(yaws)))      # media circular ponderada del yaw
-        c = float(np.dot(w, np.cos(yaws)))
-        yaw_f = math.atan2(s, c)
+        x_f = y_f = yaw_f = xy_var = yaw_var = None
+        tag = ''
+        # PRIMARIO: ≥2 markers → ajuste por posiciones (inmune al flip).
+        if self._multi_enabled and used >= 2:
+            fit = self._fit_robot_pose_2d_robust(base_xy, canon_xy, self._multi_max_rmse)
+            if fit is not None:
+                fx, fy, fyaw, rmse, baseline, n = fit
+                if n >= 2 and baseline >= self._multi_baseline_gate and rmse <= self._multi_max_rmse:
+                    x_f, y_f, yaw_f = fx, fy, fyaw
+                    xy_var = max(rmse * rmse, 1e-4)
+                    yaw_var = max((rmse / baseline) ** 2, math.radians(1.0) ** 2)
+                    tag = f'multi N={n}/{used} baseline={baseline:.2f} rmse={rmse:.3f}'
+        # RESPALDO: 1 marker (o multi no fiable) → single-marker (como en sim).
+        if x_f is None:
+            sm_xs, sm_ys, sm_yaws, sm_w = [], [], [], []
+            for det, dist in zip(sm_dets, dists):
+                est = self._robot_pose_from_marker(det, log=do_log)
+                if est is None:
+                    continue
+                x, y, yaw, _ = est
+                sm_xs.append(x); sm_ys.append(y); sm_yaws.append(yaw); sm_w.append(1.0 / (dist * dist))
+            if not sm_w:
+                return
+            w = np.asarray(sm_w); wsum = float(w.sum()); nsm = len(sm_w)
+            x_f = float(np.dot(w, sm_xs) / wsum)
+            y_f = float(np.dot(w, sm_ys) / wsum)
+            yaw_f = math.atan2(float(np.dot(w, np.sin(sm_yaws))), float(np.dot(w, np.cos(sm_yaws))))
+            dist_eff = math.sqrt(1.0 / (wsum / nsm))
+            xy_var = (self._xy_std_base * dist_eff) ** 2 / nsm
+            yaw_var = (self._yaw_std_base * dist_eff) ** 2 / nsm
+            tag = f'single N={nsm}'
 
-        # Incertidumbre: ruido base escalado por distancia / sqrt(N).
-        dist_eff = math.sqrt(1.0 / (wsum / used))
-        xy_var = (self._xy_std_base * dist_eff) ** 2 / used
-        yaw_var = (self._yaw_std_base * dist_eff) ** 2 / used
-
-        self._publish_estimate(x_f, y_f, yaw_f, xy_var, yaw_var, msg.header.stamp)
+        self._publish_estimate(x_f, y_f, yaw_f, xy_var, yaw_var, msg.header.stamp,
+                               multi=tag.startswith('multi'))
         self._publish_debug_markers(used_markers, x_f, y_f, msg.header.stamp)
         if do_log:
             self.get_logger().info(
-                f'ArUco pose=({x_f:.2f},{y_f:.2f},{math.degrees(yaw_f):.0f}deg) '
-                f'N={used} ids={[m[0] for m in used_markers]}')
+                f'ArUco [{tag}] pose=({x_f:.2f},{y_f:.2f},{math.degrees(yaw_f):.0f}deg) '
+                f'ids={[m[0] for m in used_markers]}')
 
     # ------------------------------------------------------------------
     def _publish_raw_poses(self, dets, msg: Image) -> None:
@@ -539,6 +620,15 @@ class ArucoLocalizationNode(Node):
         Es el BLANCO al que el SLAM debe anclar (esquina SW en (0,0))."""
         ma = MarkerArray()
         frame = self._map_frame
+
+        # Lead with DELETEALL so RViz drops markers it cached from a PREVIOUS run
+        # (e.g. ArUcos removed from the map) instead of leaving them drawn forever.
+        # rviz2 processes the array atomically before rendering → the ADDs below
+        # repaint the current set with no visible flicker. Included in every publish
+        # so a still-running RViz self-cleans whenever this node restarts.
+        _clear = Marker()
+        _clear.action = Marker.DELETEALL
+        ma.markers.append(_clear)
 
         def base(ns: str, mid: int, mtype: int) -> Marker:
             mk = Marker()
@@ -619,7 +709,7 @@ class ArucoLocalizationNode(Node):
             mk.header.stamp = stamp
         self._pub_ideal.publish(self._ideal_msg)
 
-    def _publish_estimate(self, x, y, yaw, xy_var, yaw_var, stamp) -> None:
+    def _publish_estimate(self, x, y, yaw, xy_var, yaw_var, stamp, multi=False) -> None:
         m = PoseWithCovarianceStamped()
         m.header.stamp = stamp
         m.header.frame_id = self._map_frame
@@ -636,6 +726,13 @@ class ArucoLocalizationNode(Node):
         cov[21] = 1e6            # roll
         cov[28] = 1e6            # pitch
         cov[35] = yaw_var        # yaw
+        # BANDERA fuente del fix en el término cruzado x-y (no lo usa nadie como
+        # covarianza real; slam_node onAruco lo lee): 1.0 = MULTI-marker (ajuste por
+        # posiciones, INMUNE al flip de PnP/yaw mal mapeado), 0.0 = single-marker
+        # (puede salir reflejado si un marker está mal medido). El rescate por
+        # discrepancia del SLAM solo se fía de los multi para no teletransportar un
+        # MCL bien localizado a partir de un single reflejado.
+        cov[1] = 1.0 if multi else 0.0
         m.pose.covariance = cov
         self._pub_est.publish(m)
 

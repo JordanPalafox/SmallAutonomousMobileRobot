@@ -161,11 +161,45 @@ slam_node:
                                         #   0.5 m lo rechaza; todos los pares canónicos reales están a ≥0.6 m, así que no descarta sets válidos.
     aruco_anchor_min_spread:    0.05    # m — SOLO piso anti-degenerado (puntos casi coincidentes). NO es el gate de colinealidad:
                                         #   markers colineales con baseline LARGO SÍ anclan bien (la rotación queda determinada por el baseline).
-    aruco_track_x:              4.85    # m — ancho pista canónica SIM (aruco_map_sim 4.85×3.65). Robot real va girado → override.
-    aruco_track_y:              3.65    # m — alto pista canónica SIM
+    aruco_track_x:              4.85    # m — DEFAULT = pista SIM (aruco_map_sim 4.85×3.65, "portrait").
+                                        #   El robot REAL es 3.65×4.85 ("landscape", girado): robot.launch.py
+                                        #   SOBREESCRIBE a 3.65. NO cambiar este default (rompería sim).
+    aruco_track_y:              3.65    # m — DEFAULT = pista SIM. robot.launch.py SOBREESCRIBE a 4.85 para REAL.
     aruco_anchor_bounds_margin: 0.50    # m — margen permitido fuera de la pista antes de RECHAZAR el anclaje
+    # ESTAMPAR PAREDES CANÓNICAS: al anclar (y al cargar el mapa anclado) quema el perímetro
+    # [0..track_x]×[0..track_y] como pared nítida (l_max) → fuente de verdad de las paredes
+    # externas, encima del scan ruidoso (l_max > occupied_stop ⇒ el rayo libre no las borra).
+    # DEFAULT OFF (sim intacto); el robot REAL lo activa en robot.launch.py.
+    aruco_stamp_walls:          false
+    aruco_wall_thickness_cells: 2       # grosor en celdas (2 = ~8 cm a 0.04 m/celda; 1=nítido, 3=más margen)
+    # Banda de PROTECCIÓN de paredes (m): una vez anclado+estampado, los endpoints del
+    # scan dentro de esta banda del perímetro canónico NO votan "ocupado" → no se forman
+    # paredes dobles/ruido junto a la pared canónica (que es la fuente de verdad). 0 = off.
+    aruco_wall_protect_band:    0.12
+    # RE-VALIDACIÓN del anclaje: tras el primer anclaje, sigue re-ajustando con
+    # correcciones PEQUEÑAS conforme acumula más markers (corrige el "chueco" inicial).
+    aruco_reanchor_enabled:     true
+    aruco_reanchor_interval:    2.0     # s entre re-validaciones (rate-limit del re-rasterizado)
+    aruco_reanchor_min_corr:    0.02    # m; por debajo = ya alineado, no re-rasterizar (deadband)
+    aruco_reanchor_min_corr_th: 0.009   # rad (~0.5°) deadband angular
+    aruco_reanchor_max_corr:    0.50    # m; por encima = no es refinamiento → rechaza (sospecha)
+    aruco_reanchor_max_corr_th: 0.262   # rad (~15°)
+    # FULL LIMPIO: una vez anclado y el scan ENCAJA BIEN sostenidamente con la geometría
+    # canónica estampada, deja SOLO esa geometría (borra el ruido del scan) y pasa a
+    # localización pura → el gemelo digital es la fuente de verdad. Default OFF (los
+    # launches sim/real lo activan donde se estampa el layout).
+    aruco_full_clean:           false
+    aruco_full_clean_fit:       0.10    # m; map_fit por debajo = "encaja bien"
+    aruco_full_clean_count:     30      # scans buenos SEGUIDOS antes de limpiar
+    aruco_full_clean_min_age:   8.0     # s desde el 1er anclaje (deja converger la re-validación)
     aruco_rescue_fit:           0.15    # map_fit por encima = "el scan NO encaja" (integ_max_fit=0.10). ↓ = más sensible
     aruco_rescue_fit_count:     5       # scans malos SEGUIDOS antes de rescatar. ↑ = rescate MÁS LENTO/conservador
+    # RELOCALIZACIÓN POR ArUco (saca al MCL de la esquina espejo cuando el scan SÍ
+    # encaja). Con el mapa fixeado la pose ArUco se PRIORIZA: single O multi marker
+    # re-siembra el MCL. La sanidad de límites (slam_node onAruco) es la red de
+    # seguridad contra un fix degenerado fuera de la pista.
+    aruco_disagree_dist:        0.6     # m   — discrepancia ArUco↔MCL para contar
+    aruco_disagree_count:       2       # fixes discrepando SEGUIDOS antes de relocalizar
     aruco_max_sigma_xy:         0.30    # m   — NO rescatar hacia un fix incierto (marker lejano/único)
     aruco_min_interval:         1.0     # s   — mínimo entre rescates
     aruco_seed_sigma_xy:        0.20    # m   — dispersión al re-sembrar (el scan afina desde ahí)

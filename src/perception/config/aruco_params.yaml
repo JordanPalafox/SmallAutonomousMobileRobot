@@ -2,15 +2,18 @@
 # Se cargan vias launch. Los paths se resuelven en el launch al share dir.
 aruco_localization:
   ros__parameters:
-    image_topic: /cam_img
+    image_topic: /video_source/raw   # camara real de la Jetson
     qos: sensor_data
     marker_length: 0.09          # 9 cm de lado (DICT_ARUCO_ORIGINAL 5x5)
     dictionary: original          # DICT_ARUCO_ORIGINAL
     map_frame: map
     # Origen del aruco_map.yaml dentro del frame `map` del SLAM [x, y, yaw_deg].
-    # Robot arranca en el CENTRO de la pista 3.65x4.85, ArUco medidos desde la
-    # esquina (0,0) -> origen = -(3.65/2, 4.85/2).
-    aruco_origin_in_map: [-1.825, -2.425, 0.0]
+    # ANCLAJE: el frame `map` == frame canonico ArUco con la esquina SW del almacen
+    # en (0,0). aruco_map.yaml ya esta medido desde esa esquina => origen [0,0,0]
+    # (NO el centro de la pista, como en el diseno viejo).
+    # NOTA: este archivo NO lo carga robot.launch.py (que setea params inline); es
+    # referencia / para correr aruco_localization standalone.
+    aruco_origin_in_map: [0.0, 0.0, 0.0]
 
     # --- Extrinsecos de camara (frame OPTICO en base_link) ---
     # AJUSTAR al montaje fisico real del robot.

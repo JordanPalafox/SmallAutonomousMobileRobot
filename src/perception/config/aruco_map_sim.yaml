@@ -10,7 +10,6 @@ markers:
   - {id: 19, x:  3.785, y:  2.480, z: 0.045, yaw_deg:   0.0, mount: wall}
   - {id: 20, x:  3.785, y:  1.250, z: 0.045, yaw_deg:   0.0, mount: wall}
   - {id: 21, x:  0.790, y:  0.035, z: 0.045, yaw_deg:  90.0, mount: wall}
-  - {id: 22, x:  4.845, y:  0.370, z: 0.045, yaw_deg: 180.0, mount: wall}
   - {id: 25, x:  2.725, y:  1.250, z: 0.045, yaw_deg: 180.0, mount: wall}
   - {id: 28, x:  1.500, y:  1.245, z: 0.045, yaw_deg: 270.0, mount: wall}
   - {id: 30, x:  0.040, y:  2.030, z: 0.045, yaw_deg:   0.0, mount: wall}

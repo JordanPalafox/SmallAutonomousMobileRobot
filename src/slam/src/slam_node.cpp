@@ -21,6 +21,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <array>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -76,6 +77,7 @@ public:
     double l_free = declare_parameter("l_free", -0.2);
     double l_min = declare_parameter("l_min", -2.0);
     double l_max = declare_parameter("l_max", 4.0);
+    l_max_ = l_max;   // guardado para estampar paredes canónicas al anclar (stampWallRect)
     double dl_occ = declare_parameter("display_l_occ", 2.5);
     double dl_free = declare_parameter("display_l_free", -1.2);
     double occ_stop = declare_parameter("occupied_stop", 3.0);
@@ -201,6 +203,14 @@ public:
     // Disparador del RESCATE: scan que NO encaja con el mapa de forma sostenida.
     aruco_rescue_fit_       = declare_parameter("aruco_rescue_fit", 0.15);     // map_fit por encima = "no encaja" (integ_max_fit es 0.10)
     aruco_rescue_fit_count_ = declare_parameter("aruco_rescue_fit_count", 5);  // scans malos SEGUIDOS antes de rescatar (↑ = más lento)
+    // 2º disparador del RESCATE: el fix ArUco (pose ABSOLUTA) DISCREPA de la pose
+    // MCL de forma sostenida AUNQUE el scan encaje. Caso esquina-simétrica: el MCL
+    // se ancla en la esquina espejo (el scan local encaja igual de bien ahí, así que
+    // bad_fit_run_ se queda en 0 y el disparador de "no encaja" NUNCA salta) y solo
+    // el ArUco puede sacarlo. dist grande (>>ruido MCL, <<error de esquina) separa
+    // deriva normal de error grueso; count evita que un fix transitorio teletransporte.
+    aruco_disagree_dist_  = declare_parameter("aruco_disagree_dist", 0.6);   // m; discrepancia ArUco↔MCL para contar
+    aruco_disagree_count_ = declare_parameter("aruco_disagree_count", 3);    // fixes ciertos discrepando SEGUIDOS antes de rescatar
     aruco_anchor_cert_       = declare_parameter("aruco_anchor_cert", 0.4);      // certeza MCL mínima para ANCLAR (scan_fits es el gate real)
     aruco_anchor_min_kf_     = declare_parameter("aruco_anchor_min_kf", 5);      // keyframes mínimos para anclar
     aruco_anchor_min_cells_  = declare_parameter("aruco_anchor_min_cells", 400); // celdas ocupadas mínimas para anclar
@@ -221,6 +231,40 @@ public:
     aruco_track_x_             = declare_parameter("aruco_track_x", 4.85);            // m; ancho pista canónica SIM (aruco_map_sim 4.85×3.65; real robot girado → override en su launch)
     aruco_track_y_             = declare_parameter("aruco_track_y", 3.65);            // m; alto pista canónica SIM
     aruco_anchor_bounds_margin_= declare_parameter("aruco_anchor_bounds_margin", 0.50);// m; margen permitido fuera de la pista
+    // ESTAMPAR PAREDES CANÓNICAS: al anclar (y al cargar el mapa anclado), quema el
+    // perímetro [0..track_x]×[0..track_y] como pared nítida (l_max) → fuente de verdad
+    // de las paredes externas, sobre el scan ruidoso. Default OFF (sim intacto); el
+    // robot real lo activa en robot.launch.py.
+    aruco_stamp_walls_         = declare_parameter("aruco_stamp_walls", false);
+    aruco_wall_thickness_cells_= declare_parameter("aruco_wall_thickness_cells", 2);
+    aruco_wall_protect_band_   = declare_parameter("aruco_wall_protect_band", 0.12); // m; scans dentro de esta banda del perímetro NO marcan pared (anti doble-pared)
+    // Layout estático del gemelo digital (racks/rollers/camiones), aplanado por el
+    // launch desde static_layout_{sim,real}.yaml: [cx,cy,sx,sy,yaw_rad] × N. Al anclar
+    // se estampan como rectángulos rotados ocupados → mapa estático exacto y limpio.
+    {
+      auto flat = declare_parameter("aruco_static_obstacles", std::vector<double>{});
+      for (size_t k = 0; k + 4 < flat.size(); k += 5)
+        aruco_obstacles_.push_back({flat[k], flat[k+1], flat[k+2], flat[k+3], flat[k+4]});
+      if (!aruco_obstacles_.empty())
+        RCLCPP_INFO(get_logger(), "Layout estático cargado: %zu obstáculos para estampar al anclar",
+                    aruco_obstacles_.size());
+    }
+    // RE-VALIDACIÓN del anclaje: tras el primer anclaje, sigue re-ajustando con
+    // correcciones PEQUEÑAS conforme acumula más markers (corrige el "chueco" del
+    // primer anclaje hecho con pocos markers). Rate-limit + deadband + tope de magnitud.
+    aruco_reanchor_enabled_    = declare_parameter("aruco_reanchor_enabled", true);
+    aruco_reanchor_interval_   = declare_parameter("aruco_reanchor_interval", 2.0);     // s entre re-validaciones
+    aruco_reanchor_min_corr_   = declare_parameter("aruco_reanchor_min_corr", 0.02);    // m; por debajo = ya alineado (no re-rasterizar)
+    aruco_reanchor_min_corr_th_= declare_parameter("aruco_reanchor_min_corr_th", 0.009);// rad (~0.5°)
+    aruco_reanchor_max_corr_   = declare_parameter("aruco_reanchor_max_corr", 0.50);    // m; por encima = no es refinamiento (sospecha)
+    aruco_reanchor_max_corr_th_= declare_parameter("aruco_reanchor_max_corr_th", 0.262);// rad (~15°)
+    // FULL LIMPIO: una vez anclado y el scan ENCAJA BIEN de forma sostenida con la
+    // geometría canónica estampada, deja SOLO esa geometría (borra el ruido del scan)
+    // y pasa a localización pura → el gemelo digital es la fuente de verdad.
+    aruco_full_clean_         = declare_parameter("aruco_full_clean", false);
+    aruco_full_clean_fit_     = declare_parameter("aruco_full_clean_fit", 0.10);    // m; map_fit por debajo = "encaja bien"
+    aruco_full_clean_count_   = declare_parameter("aruco_full_clean_count", 30);    // scans buenos SEGUIDOS antes de limpiar
+    aruco_full_clean_min_age_ = declare_parameter("aruco_full_clean_min_age", 8.0); // s desde el 1er anclaje (deja converger la re-validación)
 
     grid_ = std::make_unique<slam::OccupancyGrid>(mapw_, maph_, res_, l_occ, l_free,
                                                   l_min, l_max, dl_occ, dl_free, occ_stop);
@@ -251,6 +295,18 @@ public:
         first_write_    = false;
         anchored_       = true;    // mapa cargado ya está en su frame → no re-anclar
         lmx_ = sx_; lmy_ = sy_; lmth_ = sth_;
+        // Re-estampa el perímetro canónico sobre el mapa cargado (que arrastra el
+        // ruido del mapeo). Asume que el mapa guardado YA fue anclado (SW=(0,0),
+        // mismo aruco_track_x/y) — cierto para mapas guardados tras el anclaje FASE-1.
+        if (aruco_stamp_walls_) {
+          grid_->stampWallRect(0.0, 0.0, aruco_track_x_, aruco_track_y_,
+                               aruco_wall_thickness_cells_, l_max_);
+          for (const auto& o : aruco_obstacles_)
+            grid_->stampRotatedRect(o[0], o[1], o[2], o[3], o[4], l_max_);
+          RCLCPP_INFO(get_logger(),
+            "Geometría canónica estampada sobre el mapa cargado: perímetro + %zu obstáculos",
+            aruco_obstacles_.size());
+        }
         RCLCPP_INFO(get_logger(),
           "Loaded saved map '%s' (%d wall cells) — LOCALISATION-ONLY: the map "
           "will NOT be modified. If the robot doesn't start at (%.2f, %.2f, %.0f°), "
@@ -479,6 +535,19 @@ private:
     // encaja con el mapa (map_fit alto). inf = aún sin mapa establecido → no cuenta.
     if (std::isfinite(map_fit) && map_fit > aruco_rescue_fit_) ++bad_fit_run_;
     else bad_fit_run_ = 0;
+
+    // Rastreo de MATCH BUENO sostenido (para el FULL LIMPIO): scans seguidos donde el
+    // scan encaja BIEN con la geometría (canónica) estampada.
+    if (std::isfinite(map_fit) && map_fit <= aruco_full_clean_fit_) ++good_fit_run_;
+    else good_fit_run_ = 0;
+    // Una vez anclado, con la re-validación ya asentada (min_age) y el scan encajando
+    // bien de forma sostenida: deja SOLO la geometría canónica y localiza puro.
+    if (aruco_full_clean_ && anchored_ && !full_clean_done_ && aruco_stamp_walls_ &&
+        good_fit_run_ >= aruco_full_clean_count_ &&
+        (scan_t - anchor_time_) > aruco_full_clean_min_age_) {
+      cleanToCanonical();
+      full_clean_done_ = true;
+    }
 
     // map→odom (smoothed)
     Pose2 newtf = compose({sx_, sy_, sth_}, inverse({ox_, oy_, oth_}));
@@ -736,7 +805,31 @@ private:
   // de los keyframes y re-integra sus scans en un grid limpio (mismo patrón que
   // el backend), y mueve la pose actual + TF. Resultado: el mapa queda en una
   // posición FIJA (la de los markers), independiente de dónde se empezó a mapear.
+  // FULL LIMPIO: reemplaza el mapa por SOLO la geometría canónica (perímetro +
+  // obstáculos del gemelo digital) y pasa a localización pura. Se llama una vez que
+  // el scan encaja bien con lo estampado → esa geometría es la fuente de verdad.
+  void cleanToCanonical() {
+    auto clean = grid_->cloneEmpty();
+    clean->stampWallRect(0.0, 0.0, aruco_track_x_, aruco_track_y_,
+                         aruco_wall_thickness_cells_, l_max_);
+    for (const auto& o : aruco_obstacles_)
+      clean->stampRotatedRect(o[0], o[1], o[2], o[3], o[4], l_max_);
+    grid_->adoptLogFrom(*clean);
+    localization_only_ = true;   // deja de escribir el mapa → se mantiene limpio
+    graph_en_ = false;           // el backend ya no re-rasteriza (no re-ensucia)
+    ++map_epoch_;                // descarta cualquier re-raster del backend en vuelo
+    RCLCPP_INFO(get_logger(),
+      "Mapa FULL LIMPIO: solo geometría canónica (perímetro + %zu obstáculos) → "
+      "localización pura contra el gemelo digital",
+      aruco_obstacles_.size());
+  }
+
   void anchorToAruco(const Pose2& T) {
+    // Activa la banda de protección de paredes ANTES de re-rasterizar: cloneEmpty la
+    // hereda → el re-raster ya no marca pared junto al perímetro, y grid_ queda
+    // protegido para los scans EN VIVO posteriores.
+    if (aruco_stamp_walls_ && aruco_wall_protect_band_ > 0.0)
+      grid_->setWallProtect(0.0, 0.0, aruco_track_x_, aruco_track_y_, aruco_wall_protect_band_);
     for (int i = 0; i < graph_.size(); ++i)
       graph_.node(i).pose = compose(T, graph_.node(i).pose);
     auto rebuilt = grid_->cloneEmpty();
@@ -749,6 +842,19 @@ private:
       rebuilt->integrateCloud(nd.pose, ep, lx_, ly_);
     }
     grid_->adoptLogFrom(*rebuilt);
+    // Quema el perímetro canónico (paredes externas) como fuente de verdad, encima
+    // del scan ruidoso. l_max > occupied_stop → el rayo libre se detiene en ellas y
+    // no las borra. map_epoch_ se incrementa abajo → el backend no las pisa.
+    if (aruco_stamp_walls_) {
+      grid_->stampWallRect(0.0, 0.0, aruco_track_x_, aruco_track_y_,
+                           aruco_wall_thickness_cells_, l_max_);
+      // Layout estático del gemelo digital (racks/rollers/camiones) como verdad.
+      for (const auto& o : aruco_obstacles_)
+        grid_->stampRotatedRect(o[0], o[1], o[2], o[3], o[4], l_max_);
+      RCLCPP_INFO(get_logger(),
+        "Geometría canónica estampada: perímetro %.2f×%.2f m + %zu obstáculos del layout",
+        aruco_track_x_, aruco_track_y_, aruco_obstacles_.size());
+    }
     Pose2 np = compose(T, {sx_, sy_, sth_});
     sx_ = np.x; sy_ = np.y; sth_ = np.th;
     amcl_->initGaussian(sx_, sy_, sth_, aruco_seed_sxy_, aruco_seed_sth_);
@@ -772,26 +878,62 @@ private:
     const double sig_xy = std::sqrt(std::max(m->pose.covariance[0], m->pose.covariance[7]));
     if (sig_xy > aruco_max_sigma_xy_) return;
 
-    // Solo si el scan NO encaja de forma sostenida, respetando el rate-limit.
-    if (bad_fit_run_ < aruco_rescue_fit_count_) return;
+    // Pose ArUco (absoluta en map) propagada al odom ACTUAL: compensa la latencia
+    // imagen→ahora. tfc = map→odom consistente con el fix al stamp; cur = robot ahora.
     const double tt = m->header.stamp.sec + m->header.stamp.nanosec * 1e-9;
-    if (aruco_last_t_ > 0.0 && (tt - aruco_last_t_) < aruco_min_interval_) return;
-
     const double ax = m->pose.pose.position.x;
     const double ay = m->pose.pose.position.y;
     const double ath = yawFromQuat(m->pose.pose.orientation);
     double oxs, oys, oths; odomAt(tt, oxs, oys, oths);
     const Pose2 tfc = compose({ax, ay, ath}, inverse({oxs, oys, oths}));
     const Pose2 cur = compose(tfc, {ox_, oy_, oth_});
+
+    // Fuente del fix (la marca el nodo aruco en cov[1]): 1.0 = MULTI-marker, 0.0 =
+    // single-marker. Solo para el log: el MAPA YA ESTÁ FIXEADO y los markers están
+    // bien medidos (5/22 corregidos, el resto verificado), así que la pose ArUco se
+    // PRIORIZA para RELOCALIZAR — un solo marker basta (como el usuario quiere).
+    const bool multi = m->pose.covariance[1] >= 0.5;
+
+    // DOS disparadores (cualquiera basta), ambos exigen persistencia para no
+    // teletransportar por un fix transitorio:
+    //  (A) trig_fit  — el scan NO encaja con el mapa de forma sostenida (MCL perdido).
+    //  (B) trig_disagree — el fix ArUco DISCREPA de la pose MCL de forma sostenida
+    //      AUNQUE el scan encaje (caso esquina-simétrica/espejo): la pose ABSOLUTA del
+    //      ArUco RELOCALIZA al robot. SINGLE o MULTI: con el mapa fixeado el fix es
+    //      confiable; la sanidad de límites de abajo es la red de seguridad contra un
+    //      fix degenerado (cae fuera de la pista → no se usa). El gate de sigma de
+    //      arriba ya descartó fixes inciertos (marker lejano).
+    const double disagree = std::hypot(cur.x - sx_, cur.y - sy_);
+    if (disagree > aruco_disagree_dist_) ++aruco_disagree_run_;
+    else aruco_disagree_run_ = 0;
+
+    const bool trig_fit      = bad_fit_run_        >= aruco_rescue_fit_count_;
+    const bool trig_disagree = aruco_disagree_run_ >= aruco_disagree_count_;
+    if (!trig_fit && !trig_disagree) return;
+    if (aruco_last_t_ > 0.0 && (tt - aruco_last_t_) < aruco_min_interval_) return;
+
+    // Sanidad de límites en el OBJETIVO del rescate (como el anclaje): un fix
+    // reflejado/erróneo suele caer fuera de la pista → no teletransportar ahí.
+    const double mg = aruco_anchor_bounds_margin_;
+    if (cur.x < -mg || cur.x > aruco_track_x_ + mg ||
+        cur.y < -mg || cur.y > aruco_track_y_ + mg) {
+      RCLCPP_WARN(get_logger(),
+        "ArUco RESCATE descartado: objetivo (%.2f, %.2f) fuera de la pista [%.2f×%.2f ±%.2f m]",
+        cur.x, cur.y, aruco_track_x_, aruco_track_y_, mg);
+      return;
+    }
+
     sx_ = cur.x; sy_ = cur.y; sth_ = cur.th;
     amcl_->initGaussian(sx_, sy_, sth_, aruco_seed_sxy_, aruco_seed_sth_);
     tf_x_ = tfc.x; tf_y_ = tfc.y; tf_th_ = tfc.th;
     aruco_last_t_ = tt;
     bad_fit_run_ = 0;
+    aruco_disagree_run_ = 0;
     RCLCPP_INFO(get_logger(),
-      "ArUco RESCATE (scan no encaja: %d scans con map_fit>%.2f) → re-siembra en "
-      "(%.2f, %.2f, %.1f°); el scan-match afina",
-      aruco_rescue_fit_count_, aruco_rescue_fit_, cur.x, cur.y, cur.th * 180.0 / M_PI);
+      "ArUco RELOCALIZA (%s, %s, Δ=%.2f m) → re-siembra en (%.2f, %.2f, %.1f°); el scan-match afina",
+      trig_disagree ? "discrepa del MCL" : "scan no encaja",
+      multi ? "multi" : "single",
+      disagree, cur.x, cur.y, cur.th * 180.0 / M_PI);
   }
 
   // ── FASE 1: ANCLAJE multi-marker (Umeyama) ──────────────────────────────
@@ -823,7 +965,11 @@ private:
 
   void onArucoMarkers(const std_msgs::msg::Float64MultiArray::SharedPtr m) {
     std::lock_guard<std::mutex> lk(mtx_);
-    if (!aruco_en_ || !odom_ready_ || anchored_) return;   // ya anclado → no re-anclar
+    // NO sale al anclar: sigue acumulando markers y RE-VALIDA el anclaje con una
+    // corrección pequeña (más markers = más spread = más preciso → corrige el
+    // "chueco" del primer anclaje). En localización-only (mapa cargado) NO re-ancla
+    // (no hay grafo de keyframes), solo rescata vía FASE 2.
+    if (!aruco_en_ || !odom_ready_ || localization_only_) return;
     const auto& d = m->data;
     if (d.size() < 7) return;                              // [sec, nsec] + ≥1 grupo de 5
     const double stamp = d[0] + d[1] * 1e-9;
@@ -942,15 +1088,41 @@ private:
       return;
     }
 
-    // 8. ANCLA: transforma TODO al frame canónico (esquina SW del mapa en (0,0)).
-    anchorToAruco(fit.T);
-    aruco_localized_ = true;
-    aruco_last_t_ = stamp;
+    // 8. ANCLA (primera vez) / RE-VALIDA (refina conforme acumula más markers).
+    const double corr_xy = std::hypot(fit.T.x, fit.T.y);
+    const double corr_th = std::abs(fit.T.th);
+    if (!anchored_) {
+      anchorToAruco(fit.T);              // transforma TODO al frame canónico (SW=(0,0))
+      aruco_localized_ = true;
+      aruco_last_t_ = stamp;
+      last_reanchor_t_ = stamp;
+      anchor_time_ = stamp;              // t0 para el gate de tiempo del full-limpio
+      RCLCPP_INFO(get_logger(),
+        "Mapa ANCLADO (multi-marker Umeyama): %d/%d inliers, baseline=%.2f m, rmse=%.3f m, "
+        "cert %.0f%%, %d keyframes → pose fija (%.2f, %.2f, %.1f°); esquina del mapa en (0,0)",
+        (int)inl_obs.size(), nmark, baseline, fit.rmse, cert*100.0, graph_.size(),
+        sx_, sy_, sth_*180.0/M_PI);
+      return;
+    }
+    // RE-VALIDACIÓN: el mapa ya está en canónico, así que fit.T ≈ identidad; la
+    // corrección es su desviación. Rate-limit + deadband (no re-rasterizar si ya está
+    // alineado) + tope de magnitud (una corrección grande no es refinamiento → sospecha).
+    if (!aruco_reanchor_enabled_) return;
+    if (stamp - last_reanchor_t_ < aruco_reanchor_interval_) return;
+    last_reanchor_t_ = stamp;
+    if (corr_xy < aruco_reanchor_min_corr_ && corr_th < aruco_reanchor_min_corr_th_)
+      return;   // ya alineado → no re-rasterizar
+    if (corr_xy > aruco_reanchor_max_corr_ || corr_th > aruco_reanchor_max_corr_th_) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+        "Re-anclaje RECHAZADO: corrección grande (%.2f m, %.1f°) — no es refinamiento",
+        corr_xy, corr_th * 180.0 / M_PI);
+      return;
+    }
+    anchorToAruco(fit.T);               // aplica el delta pequeño (re-estampa paredes)
     RCLCPP_INFO(get_logger(),
-      "Mapa ANCLADO (multi-marker Umeyama): %d/%d inliers, baseline=%.2f m, rmse=%.3f m, "
-      "cert %.0f%%, %d keyframes → pose fija (%.2f, %.2f, %.1f°); esquina del mapa en (0,0)",
-      (int)inl_obs.size(), nmark, baseline, fit.rmse, cert*100.0, graph_.size(),
-      sx_, sy_, sth_*180.0/M_PI);
+      "Mapa RE-ANCLADO (refinamiento): corrección (%.3f m, %.2f°), %d/%d inliers, "
+      "baseline=%.2f m, rmse=%.3f m",
+      corr_xy, corr_th * 180.0 / M_PI, (int)inl_obs.size(), nmark, baseline, fit.rmse);
   }
 
   void onReset(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
@@ -1119,6 +1291,7 @@ private:
   double aruco_gain_=0.25, aruco_max_sigma_xy_=0.30, aruco_min_interval_=0.3, aruco_max_jump_=1.0;
   double aruco_cert_thresh_=0.5, aruco_cert_rxy_=0.15, aruco_cert_rth_=0.10;
   double aruco_rescue_fit_=0.15; int aruco_rescue_fit_count_=5, bad_fit_run_=0;
+  double aruco_disagree_dist_=0.6; int aruco_disagree_count_=3, aruco_disagree_run_=0;
   double aruco_last_t_=0.0;
   bool anchored_=false;            // true → mapa ya anclado al frame canónico ArUco
   unsigned map_epoch_=0;           // bump al anclar → invalida backend en vuelo
@@ -1140,6 +1313,20 @@ private:
   double aruco_anchor_min_baseline_=0.5;  // m — GATE GEOMÉTRICO PRINCIPAL: extensión de los inliers (err_rot≈ruido/baseline)
   double aruco_anchor_min_spread_=0.05;   // m — piso anti-degenerado (puntos casi coincidentes); NO el gate principal
   double aruco_track_x_=4.85, aruco_track_y_=3.65, aruco_anchor_bounds_margin_=0.50;
+  bool aruco_stamp_walls_=false;        // estampar perímetro canónico como pared (fuente de verdad)
+  int aruco_wall_thickness_cells_=2;    // grosor de la pared estampada (celdas)
+  double aruco_wall_protect_band_=0.12; // m; banda donde el scan no marca pared (anti doble-pared)
+  std::vector<std::array<double,5>> aruco_obstacles_;  // {cx,cy,sx,sy,yaw_rad} del layout estático
+  double l_max_=4.0;                    // log-odds tope (valor del estampado; copiado del param l_max)
+  // re-validación del anclaje
+  bool aruco_reanchor_enabled_=true;
+  double aruco_reanchor_interval_=2.0, aruco_reanchor_min_corr_=0.02, aruco_reanchor_min_corr_th_=0.009;
+  double aruco_reanchor_max_corr_=0.50, aruco_reanchor_max_corr_th_=0.262;
+  double last_reanchor_t_=0.0;
+  // full-limpio (mapa = solo geometría canónica una vez que el scan encaja)
+  bool aruco_full_clean_=false, full_clean_done_=false;
+  double aruco_full_clean_fit_=0.10; int aruco_full_clean_count_=30, good_fit_run_=0;
+  double aruco_full_clean_min_age_=8.0, anchor_time_=0.0;
 
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;

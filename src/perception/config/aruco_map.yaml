@@ -16,14 +16,12 @@
 track: {x: 3.65, y: 4.85}
 
 markers:
-  - {id: 5,  x: 3.390, y: 3.969, z: 0.100, yaw_deg: 0.0,   mount: wall}
+  - {id: 5,  x: 3.620, y: 3.980, z: 0.045, yaw_deg: 180.0, mount: wall}
   - {id: 7,  x: 0.000, y: 4.515, z: 0.060, yaw_deg: 0.0,   mount: wall}
-  - {id: 13, x: 2.400, y: 4.850, z: 0.060, yaw_deg: 270.0, mount: wall}
   - {id: 17, x: 0.505, y: 4.850, z: 0.080, yaw_deg: 270.0, mount: wall}
   - {id: 19, x: 1.270, y: 3.580, z: 0.045, yaw_deg: 90.0,  mount: wall}
   - {id: 20, x: 2.400, y: 3.570, z: 0.040, yaw_deg: 90.0,  mount: wall}
   - {id: 21, x: 3.650, y: 0.790, z: 0.060, yaw_deg: 180.0, mount: wall}
-  - {id: 22, x: 3.530, y: 0.000, z: 0.060, yaw_deg: 90.0,  mount: wall}
   - {id: 25, x: 2.380, y: 2.500, z: 0.050, yaw_deg: 270.0, mount: wall}
   - {id: 28, x: 2.420, y: 1.500, z: 0.050, yaw_deg: 0.0,   mount: wall}
   - {id: 30, x: 1.620, y: 0.030, z: 0.045, yaw_deg: 90.0,  mount: wall}

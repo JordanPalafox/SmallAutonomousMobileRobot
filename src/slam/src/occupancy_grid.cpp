@@ -161,9 +161,62 @@ bool OccupancyGrid::loadFromYaml(const std::string& yaml_path, std::string& err)
 }
 
 std::unique_ptr<OccupancyGrid> OccupancyGrid::cloneEmpty() const {
-  return std::make_unique<OccupancyGrid>(w_, h_, res_, l_occ_, l_free_,
-                                         l_min_, l_max_, display_l_occ_,
-                                         display_l_free_, occupied_stop_);
+  auto g = std::make_unique<OccupancyGrid>(w_, h_, res_, l_occ_, l_free_,
+                                           l_min_, l_max_, display_l_occ_,
+                                           display_l_free_, occupied_stop_);
+  // Inherit wall-protect so re-rasters (anchor / back-end) suppress near-wall votes.
+  g->protect_active_ = protect_active_;
+  g->protect_x0_ = protect_x0_; g->protect_y0_ = protect_y0_;
+  g->protect_x1_ = protect_x1_; g->protect_y1_ = protect_y1_;
+  g->protect_band_ = protect_band_;
+  return g;
+}
+
+void OccupancyGrid::stampRotatedRect(double cx, double cy, double sx, double sy,
+                                     double yaw, double value) {
+  const double hx = std::max(sx * 0.5, 0.6 * res_);   // grosor mínimo ~1 celda
+  const double hy = std::max(sy * 0.5, 0.6 * res_);
+  const double c = std::cos(yaw), s = std::sin(yaw);
+  const double rad = std::hypot(hx, hy);              // radio del bounding box
+  const double invr = 1.0 / res_;
+  const int c0 = std::max(0, static_cast<int>(std::floor((cx - rad - origin_x_) * invr)));
+  const int c1 = std::min(w_ - 1, static_cast<int>(std::floor((cx + rad - origin_x_) * invr)));
+  const int r0 = std::max(0, static_cast<int>(std::floor((cy - rad - origin_y_) * invr)));
+  const int r1 = std::min(h_ - 1, static_cast<int>(std::floor((cy + rad - origin_y_) * invr)));
+  const float v = static_cast<float>(value);
+  for (int r = r0; r <= r1; ++r) {
+    for (int col = c0; col <= c1; ++col) {
+      const double wx = origin_x_ + (col + 0.5) * res_;
+      const double wy = origin_y_ + (r + 0.5) * res_;
+      const double dx = wx - cx, dy = wy - cy;
+      const double lx =  c * dx + s * dy;   // mundo → frame local del rect (R(-yaw))
+      const double ly = -s * dx + c * dy;
+      if (std::abs(lx) <= hx && std::abs(ly) <= hy) {
+        const size_t idx = static_cast<size_t>(r) * w_ + col;
+        if (v > log_[idx]) log_[idx] = v;
+      }
+    }
+  }
+  lf_dirty_ = true;
+}
+
+void OccupancyGrid::setWallProtect(double x0, double y0, double x1, double y1, double band) {
+  if (x1 < x0) std::swap(x0, x1);
+  if (y1 < y0) std::swap(y0, y1);
+  protect_x0_ = x0; protect_y0_ = y0; protect_x1_ = x1; protect_y1_ = y1;
+  protect_band_ = band;
+  protect_active_ = (band > 0.0);
+}
+
+bool OccupancyGrid::nearWallProtect(double wx, double wy) const {
+  if (!protect_active_) return false;
+  const double b = protect_band_;
+  // Fuera de la banda exterior, o bien dentro del interior (lejos del perímetro) → no.
+  if (wx < protect_x0_ - b || wx > protect_x1_ + b ||
+      wy < protect_y0_ - b || wy > protect_y1_ + b) return false;
+  if (wx > protect_x0_ + b && wx < protect_x1_ - b &&
+      wy > protect_y0_ + b && wy < protect_y1_ - b) return false;
+  return true;   // dentro de la banda que abraza el perímetro
 }
 
 void OccupancyGrid::adoptLogFrom(OccupancyGrid& other) {
@@ -176,6 +229,33 @@ int OccupancyGrid::countOccupied() const {
   int n = 0;
   for (float v : log_) if (v > display_l_occ_) ++n;
   return n;
+}
+
+// Stamp the PERIMETER (4 edges) of [x0,x1]×[y0,y1] (world) at `value` log-odds,
+// `thickness_cells` thick, growing inward. Same world→cell convention as
+// integrateCloud/occupiedPoints. Uses max() so it never weakens a stronger wall.
+void OccupancyGrid::stampWallRect(double x0, double y0, double x1, double y1,
+                                  int thickness_cells, double value) {
+  const double inv = 1.0 / res_;
+  if (x1 < x0) std::swap(x0, x1);
+  if (y1 < y0) std::swap(y0, y1);
+  const int c0 = static_cast<int>(std::floor((x0 - origin_x_) * inv));
+  const int c1 = static_cast<int>(std::floor((x1 - origin_x_) * inv));
+  const int r0 = static_cast<int>(std::floor((y0 - origin_y_) * inv));
+  const int r1 = static_cast<int>(std::floor((y1 - origin_y_) * inv));
+  const int t = std::max(1, thickness_cells);
+  const float v = static_cast<float>(value);
+  auto put = [&](int c, int r) {
+    if (c >= 0 && c < w_ && r >= 0 && r < h_) {
+      const size_t idx = static_cast<size_t>(r) * w_ + c;
+      if (v > log_[idx]) log_[idx] = v;   // nunca debilitar una pared real ya fuerte
+    }
+  };
+  for (int k = 0; k < t; ++k) {
+    for (int c = c0; c <= c1; ++c) { put(c, r0 + k); put(c, r1 - k); }  // bordes sur/norte
+    for (int r = r0; r <= r1; ++r) { put(c0 + k, r); put(c1 - k, r); }  // bordes oeste/este
+  }
+  lf_dirty_ = true;
 }
 
 // Bresenham/DDA free-ray from (ox,oy) cell to (ex,ey) cell, voting free
@@ -212,8 +292,10 @@ void OccupancyGrid::integrateCloud(const Pose2& robot, const Cloud& world_ep,
       if (e2 > -dy) { err -= dy; cx += sx; }
       if (e2 <  dx) { err += dx; cy += sy; }
     }
-    // Occupied endpoint.
-    if (ex_c >= 0 && ex_c < w_ && ey_c >= 0 && ey_c < h_) {
+    // Occupied endpoint — SUPRIMIDO si cae en la banda protegida del perímetro
+    // canónico (la pared estampada es la verdad ahí; evita paredes dobles/ruido).
+    if (ex_c >= 0 && ex_c < w_ && ey_c >= 0 && ey_c < h_ &&
+        !nearWallProtect(world_ep.x[i], world_ep.y[i])) {
       size_t idx = static_cast<size_t>(ey_c) * w_ + ex_c;
       log_[idx] = std::min(l_max_, static_cast<double>(log_[idx]) + l_occ_);
     }
