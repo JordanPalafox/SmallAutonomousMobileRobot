@@ -271,6 +271,8 @@ def drive_until_approach_stop(
     center_deadband_px: float = 10.0,
     center_w_max: float = 0.10,
     center_fresh_s: float = 1.0,
+    vision_stale_slow_s: float = 0.0,
+    vision_stale_factor: float = 1.0,
 ) -> str:
     """Creep into the load, stopping by VISION before contact, with the wheel
     stall and the time limit as safety fallbacks.
@@ -284,6 +286,14 @@ def drive_until_approach_stop(
     left the frame up close. Both carry the same sign convention, so the same
     gain applies; the command is capped at ``center_w_max`` and ignored within
     ``center_deadband_px``. ``center_kp`` = 0 keeps the constant ``w``.
+
+    Camera-freeze safety (``vision_stale_factor`` < 1.0): if the vision
+    heartbeat (the per-frame ``approach_stop`` signal) goes stale for longer
+    than ``vision_stale_slow_s`` the feed has frozen and the robot is creeping
+    blind, so the forward speed is scaled by ``vision_stale_factor`` (0 = hold)
+    until the feed recovers — preventing an overshoot past the ideal stop while
+    no fresh frame can fire the vision stop. Stall detection is suppressed while
+    slowed so the reduced wheel speed isn't misread as contact.
 
     This is the brownout fix for the PICK forward approach: the old path only
     stopped once the wheels stalled — i.e. once the robot had already crashed
@@ -314,6 +324,7 @@ def drive_until_approach_stop(
     grace_until = t0 + grace
     stalled = 0
     last_center_src = None
+    stale_logged = False
     logger.info("[%s] creep v=%.3f for <=%.1fs (vision_stop=%s, fallback stall < "
                 "%.2f rad/s)", tag, v, max_duration, vision_enabled, stall_speed)
     try:
@@ -353,7 +364,31 @@ def drive_until_approach_stop(
                     last_center_src = src
                 if err_px is not None and abs(err_px) > center_deadband_px:
                     w_cmd = max(-center_w_max, min(center_w_max, -center_kp * err_px))
-            publish_cmd(v, w_cmd)
+            # Camera-freeze safety: /approach_stop/should_stop is republished on
+            # EVERY processed camera frame, so its stamp is the vision heartbeat.
+            # If it goes stale the feed has frozen / the detector stalled and the
+            # robot is creeping BLIND toward the load — a frozen frame can sail it
+            # past the ideal stop before the signal returns (the reported failure:
+            # ~1 s freeze right at the ideal pose, no time to brake). So scale the
+            # creep down while stale (vision_stale_factor: <1 slows, 0 holds) and
+            # restore full speed when the feed recovers. Disabled at factor >= 1.0.
+            sig = bb_get(blackboard, "approach_stop_signal") if vision_enabled else None
+            v_eff = v
+            slowed_for_stale = False
+            if (vision_enabled and vision_stale_factor < 1.0 and sig is not None
+                    and (now - sig[1]) > vision_stale_slow_s):
+                v_eff = v * vision_stale_factor
+                slowed_for_stale = True
+                if not stale_logged:
+                    logger.warning("[%s] vision feed STALE (>%.2f s, no camera "
+                                   "update) — slowing creep to %.0f%% until it "
+                                   "recovers (anti-overshoot).", tag,
+                                   vision_stale_slow_s, vision_stale_factor * 100.0)
+                    stale_logged = True
+            elif stale_logged:
+                logger.info("[%s] vision feed recovered — resuming full creep.", tag)
+                stale_logged = False
+            publish_cmd(v_eff, w_cmd)
 
             # 1) Vision stop (primary) — stop BEFORE contact. Only honour a
             #    signal that ARRIVED AFTER this creep began (stamp >= t0): that
@@ -363,17 +398,18 @@ def drive_until_approach_stop(
             #    the logo is at target NOW. The Jetson twist_relay guard still
             #    cuts forward physically on any fresh True, so the few mm before
             #    that confirmation can't crash the robot.
-            if vision_enabled:
-                sig = bb_get(blackboard, "approach_stop_signal")
-                if sig is not None:
-                    should_stop, stamp = sig
-                    if should_stop and stamp >= t0 and (now - stamp) <= vision_fresh_s:
-                        logger.info("[%s] VISION stop — logo at target distance, "
-                                    "halting before contact.", tag)
-                        return "vision"
+            if sig is not None:
+                should_stop, stamp = sig
+                if should_stop and stamp >= t0 and (now - stamp) <= vision_fresh_s:
+                    logger.info("[%s] VISION stop — logo at target distance, "
+                                "halting before contact.", tag)
+                    return "vision"
 
-            # 2) Wheel stall (fallback) — only after the spin-up grace.
-            if now >= grace_until:
+            # 2) Wheel stall (fallback) — only after the spin-up grace, and NOT
+            #    while we're deliberately slowing for a stale feed (the lower
+            #    wheel speed would otherwise be misread as contact → false stop
+            #    at the wrong pose).
+            if now >= grace_until and not slowed_for_stale:
                 ws = bb_get(blackboard, "wheel_speed")
                 if ws is not None and abs(ws) < stall_speed:
                     stalled += 1
@@ -383,6 +419,8 @@ def drive_until_approach_stop(
                         return "stalled"
                 else:
                     stalled = 0
+            elif slowed_for_stale:
+                stalled = 0
 
             # 3) Time limit (fallback).
             if now >= deadline:

@@ -63,6 +63,8 @@ class Pick(DebuggableState):
         center_w_max: float = 0.10,
         center_deadband_px: float = 12.0,
         center_fresh_s: float = 1.0,
+        vision_stale_slow_s: float = 0.4,
+        vision_stale_factor: float = 0.25,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -94,6 +96,12 @@ class Pick(DebuggableState):
         self._center_w_max = float(center_w_max)
         self._center_deadband_px = float(center_deadband_px)
         self._center_fresh_s = float(center_fresh_s)
+        # Camera-freeze safety for the approach creep: if the vision feed stops
+        # updating for vision_stale_slow_s, scale the forward speed by
+        # vision_stale_factor (<1 slows, 0 holds) so a frozen frame can't carry
+        # the robot past the ideal stop. factor=1.0 disables it.
+        self._vision_stale_slow_s = float(vision_stale_slow_s)
+        self._vision_stale_factor = float(vision_stale_factor)
 
     def run(self, blackboard: Blackboard) -> str:
         mission = bb_get(blackboard, "current_mission") or {}
@@ -213,4 +221,6 @@ class Pick(DebuggableState):
             vision_fresh_s=self._vision_fresh,
             tag="PICK fwd",
             center_kp=self._center_kp, center_deadband_px=self._center_deadband_px,
-            center_w_max=self._center_w_max, center_fresh_s=self._center_fresh_s)
+            center_w_max=self._center_w_max, center_fresh_s=self._center_fresh_s,
+            vision_stale_slow_s=self._vision_stale_slow_s,
+            vision_stale_factor=self._vision_stale_factor)

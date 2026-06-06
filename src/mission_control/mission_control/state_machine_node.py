@@ -155,6 +155,13 @@ class StateMachineNode(Node):
         # from a dead detector).
         self.declare_parameter("pick_vision_stop", True)
         self.declare_parameter("pick_vision_fresh_s", 1.0)
+        # Camera-freeze safety for the forward creep: if the vision feed stops
+        # updating for pick_vision_stale_slow_s, scale the creep speed by
+        # pick_vision_stale_factor (<1 slows, 0 holds) so a frozen frame can't
+        # carry the robot past the ideal stop. Set factor=1.0 to disable. The
+        # stale threshold MUST be above the detector's normal frame interval.
+        self.declare_parameter("pick_vision_stale_slow_s", 0.4)
+        self.declare_parameter("pick_vision_stale_factor", 0.25)
         # Logo CENTERING for the ROLLER pick approach: steer on the logo's lateral
         # error (/approach_stop/center_error) so the lifter enters straight. 0 =
         # straight creep. The rack uses its own pick_rack_center_* gains.
@@ -240,6 +247,8 @@ class StateMachineNode(Node):
         pick_stall_ticks       = int(self.get_parameter("pick_stall_ticks").value)
         pick_vision_stop       = bool(self.get_parameter("pick_vision_stop").value)
         pick_vision_fresh_s    = float(self.get_parameter("pick_vision_fresh_s").value)
+        pick_vision_stale_slow_s = float(self.get_parameter("pick_vision_stale_slow_s").value)
+        pick_vision_stale_factor = float(self.get_parameter("pick_vision_stale_factor").value)
         pick_center_kp         = float(self.get_parameter("pick_center_kp").value)
         pick_center_w_max      = float(self.get_parameter("pick_center_w_max").value)
         self._pick_front_arc   = _math.radians(float(self.get_parameter("pick_front_arc_deg").value))
@@ -314,6 +323,8 @@ class StateMachineNode(Node):
             pick_stall_ticks=pick_stall_ticks,
             pick_vision_stop=pick_vision_stop,
             pick_vision_fresh_s=pick_vision_fresh_s,
+            pick_vision_stale_slow_s=pick_vision_stale_slow_s,
+            pick_vision_stale_factor=pick_vision_stale_factor,
             pick_center_kp=pick_center_kp,
             pick_center_w_max=pick_center_w_max,
             pick_transport_level=pick_transport_level,
@@ -615,6 +626,8 @@ class StateMachineNode(Node):
         pick_stall_ticks: int,
         pick_vision_stop: bool,
         pick_vision_fresh_s: float,
+        pick_vision_stale_slow_s: float,
+        pick_vision_stale_factor: float,
         pick_center_kp: float,
         pick_center_w_max: float,
         pick_transport_level: int,
@@ -668,7 +681,9 @@ class StateMachineNode(Node):
                  pick_reverse_speed, pick_entry_level, pick_lift_level,
                  pick_stall_grace, pick_stall_speed, pick_stall_ticks,
                  pick_vision_stop, pick_vision_fresh_s, pick_transport_level,
-                 center_kp=pick_center_kp, center_w_max=pick_center_w_max, **kw),
+                 center_kp=pick_center_kp, center_w_max=pick_center_w_max,
+                 vision_stale_slow_s=pick_vision_stale_slow_s,
+                 vision_stale_factor=pick_vision_stale_factor, **kw),
             transitions={
                 "picked": "NAV_TO_TRUCK",
                 "done":   "MISSION_DONE",     # PICK_ONLY test ends here
@@ -691,7 +706,9 @@ class StateMachineNode(Node):
                          advance_dist=pick_rack_advance_dist,
                          advance_speed=pick_rack_advance_speed,
                          center_kp=pick_rack_center_kp,
-                         center_w_max=pick_rack_center_w_max, **kw),
+                         center_w_max=pick_rack_center_w_max,
+                         vision_stale_slow_s=pick_vision_stale_slow_s,
+                         vision_stale_factor=pick_vision_stale_factor, **kw),
             transitions={
                 "picked": "NAV_TO_TRUCK",
                 "done":   "MISSION_DONE",
