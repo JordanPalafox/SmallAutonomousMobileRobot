@@ -377,6 +377,10 @@ class QRQuadAlignmentNode(Node):
         # pallet the robot is in front of. Only payloads that decoded
         # successfully are published (empty strings are dropped).
         self._pub_qr_id = self.create_publisher(String, '/qr_detected', 10)
+        # Lateral pixel error of the pallet's QR (x = cx_px − target_cx_px),
+        # so the PICK forward creep can keep centring on the QR while visible
+        # and fall back to the logo center error only when it leaves the frame.
+        self._pub_qr_center = self.create_publisher(Point, '/qr_center_error', 10)
         # Annotated debug image for the web dashboard camera view.
         self._pub_debug_img = self.create_publisher(Image, '/qr_quad_alignment/debug_image', 10)
 
@@ -485,6 +489,23 @@ class QRQuadAlignmentNode(Node):
             id_msg = String()
             id_msg.data = str(closest['id'])
             self._pub_qr_id.publish(id_msg)
+
+            # Lateral pixel error of the closest pallet's QR, SAME sign
+            # convention as the logo center error (object_cx − target_center;
+            # +ve = QR is right of target). Published every frame the QR is
+            # decoded so the PICK forward creep can keep centring on the QR
+            # while it is still visible, and fall back to the logo only once it
+            # leaves the frame. target_cx_px tracks the active dock profile
+            # (roller/rack) via _apply_dock_profile.
+            cg = compute_geometry(
+                closest['tvec'], closest['corners'],
+                self._cam_off_x, self._cam_off_y,
+            )
+            qce = Point()
+            qce.x = float(cg['cx_px'] - self._target_cx_px)
+            qce.y = 0.0
+            qce.z = 0.0
+            self._pub_qr_center.publish(qce)
 
         if dets:
             d = dets[0]

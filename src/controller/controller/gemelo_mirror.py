@@ -7,12 +7,16 @@ Ignition `/world/<world>/set_pose`. Así el robot del gemelo SIGUE en vivo al
 robot físico — es un visualizador, no una simulación con físicas.
 
 Transformación map -> mundo Gazebo (rígida SE(2)):
-    El mundo del gemelo usa la convención aruco2gz (origen en la esquina) y el
-    frame `map` del SLAM tiene su origen en el CENTRO de la pista. La relación es
-    una rotación + traslación, configurable por parámetros:
-        gz = R(world_from_map_yaw) · map_xy + world_from_map_xy
-    Defaults para la pista 3.65x4.85 con el robot arrancando en el centro:
-        yaw = -90°, t = (2.425, 1.825)
+    Después del ancla ArUco el frame `map` del SLAM tiene su origen en la
+    esquina SW del almacén REAL (x=E-W 0→3.65 m, y=N-S 0→4.85 m).
+    El mundo Gazebo tiene su origen en la esquina SE (x=N-S 0→4.85 m,
+    y=E-W east→west 0→3.65 m).  La relación es:
+        gz_x = map_y + tx        (norte en Gazebo = norte en REAL)
+        gz_y = −map_x + ty       (oeste en Gazebo = ancho − este en REAL)
+    con yaw_gz = yaw_map − 90°.
+    Equivalente matricial: gz = R(-90°) · map_xy + (tx, ty)
+    Defaults para pista 3.65×4.85 m con ancla ArUco en esquina SW:
+        yaw = -90°, t = (0.0, 3.65)
 """
 from __future__ import annotations
 
@@ -40,7 +44,7 @@ class GemeloMirror(Node):
         self.declare_parameter('rate', 15.0)
         # Transformacion map -> mundo gemelo
         self.declare_parameter('world_from_map_yaw_deg', -90.0)
-        self.declare_parameter('world_from_map_xy', [2.425, 1.825])
+        self.declare_parameter('world_from_map_xy', [0.0, 3.65])
         # Altura a la que se dibuja el robot en el gemelo [m]
         self.declare_parameter('z', 0.0)
 

@@ -42,8 +42,9 @@ LIDAR_Z_MAX = 0.25   # m; un obstáculo cuenta si su BASE está por debajo de es
 # rack_C1/C2: cara norte del bay superior debe estar a 130 cm de la pared norte
 # (la transformación gz→real los dejaba en ~123 cm → corrección -0.07 m en Y).
 MANUAL_REAL_CORRECTIONS = {
-    'rack_C1_': {'dx': 0.0, 'dy': -0.07},
-    'rack_C2_': {'dx': 0.0, 'dy': -0.07},
+    # Añadir correcciones post-survey aquí si el transform gz->real
+    # introduce desviaciones conocidas en algún obstáculo.
+    # Formato: {'prefijo_nombre': {'dx': ..., 'dy': ...}}  (metros, frame real)
 }
 
 

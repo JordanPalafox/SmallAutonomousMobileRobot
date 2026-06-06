@@ -22,6 +22,7 @@ Publications
 /nav_status     (std_msgs/String)            — IDLE | PLANNING | FOLLOWING:<name>
                                                ARRIVED:<name> | ERROR:<reason>
                                                WALL_FOLLOWING:<name> | RETURNING_LEAVE:<name>
+                                               WAITING_FOR_PATH:<name> (no route: holding+retrying)
 """
 
 from __future__ import annotations
@@ -66,6 +67,7 @@ class _State:
     WAITING_FOR_CLEAR = 'WAITING_FOR_CLEAR' # path blocked, waiting for dynamic obstacle
     WALL_FOLLOWING    = 'WALL_FOLLOWING'    # Bug1 phase 1
     RETURNING_LEAVE   = 'RETURNING_LEAVE'   # Bug1 phase 2
+    WAITING_FOR_PATH  = 'WAITING_FOR_PATH'  # no route to goal: hold + retry plan
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +220,34 @@ class NavNode(Node):
         # ── Dynamic-obstacle wait policy ──────────────────────────────
         self.declare_parameter('wait_for_clear_timeout', 5.0)
 
+        # ── Bug1 wall-follow watchdogs ────────────────────────────────
+        # Absolute cap on a single circumnavigation, and a no-progress cap
+        # (closest-to-goal distance must improve within this window).  Both
+        # rescue the cases the legacy vicinity-gated 25 s timeout misses.
+        self.declare_parameter('wall_follow_total_timeout',      90.0)
+        self.declare_parameter('wall_follow_noprogress_timeout', 15.0)
+
+        # ── FOLLOWING stuck watchdog ──────────────────────────────────
+        # If distance-to-goal hasn't dropped by `follow_progress_eps` within
+        # `follow_progress_timeout` s, the robot is wedged: emit ERROR so the
+        # mission layer (SEARCH) can move on instead of hanging.
+        self.declare_parameter('follow_progress_timeout', 12.0)
+        self.declare_parameter('follow_progress_eps',     0.05)
+
+        # ── No-path retry (hold-and-wait for a blocked route to open) ─
+        # When the planner finds NO path at all (robot boxed in, a gate/door
+        # sealing the only route, an obstacle the global plan can't get
+        # around), DON'T give up: stop and re-plan every `no_path_retry_period`
+        # s until a route appears (e.g. the door opens), then resume FOLLOWING.
+        # Distinct from the FOLLOWING stuck watchdog above, which fires when a
+        # path DOES exist but the robot can't progress on it (→ ERROR so SEARCH
+        # skips).  `no_path_retry_timeout` <= 0 retries forever (the operator
+        # can always abort via /goal_waypoint "stop"); > 0 gives up with ERROR
+        # after that many seconds so a mission can move on.
+        self.declare_parameter('no_path_retry',          True)
+        self.declare_parameter('no_path_retry_period',    2.0)
+        self.declare_parameter('no_path_retry_timeout',  -1.0)
+
         # ── System mode (gates goal acceptance) ───────────────────────
         # When mode != NAVIGATION, /goal_waypoint commands are rejected with
         # an ERROR status so we never try to navigate while the operator is
@@ -227,6 +257,20 @@ class NavNode(Node):
         if sm not in ('mapping', 'navigation'):
             sm = 'navigation'
         self._system_mode = 'NAVIGATION' if sm == 'navigation' else 'MAPPING'
+
+        # Bug1 reachability guard: the wall-follow only runs after the robot
+        # enters WAITING_FOR_CLEAR, which can only happen via the safety bubble
+        # or validity-replan.  Flipping enable_bug1 alone is a silent no-op —
+        # warn so the operator knows to enable a trigger too.
+        if (bool(self.get_parameter('enable_bug1').value)
+                and not bool(self.get_parameter('enable_safety_bubble').value)
+                and not bool(self.get_parameter('enable_validity_replan').value)):
+            self.get_logger().warn(
+                'enable_bug1=true but both enable_safety_bubble and '
+                'enable_validity_replan are false: nothing enters '
+                'WAITING_FOR_CLEAR, so Bug1 wall-follow can NEVER trigger. '
+                'Enable one of those to use Bug1.'
+            )
 
         map_yaml       = os.path.expanduser(self.get_parameter('map_yaml').value)
         waypoints_yaml = os.path.expanduser(self.get_parameter('waypoints_yaml').value)
@@ -305,6 +349,27 @@ class NavNode(Node):
         self._wf_goal: Optional[WorldPt] = None  # goal coordinates when Bug1 started
         self._wf_left_vicinity: bool = False      # True once we've moved away from q_hit
         self._wf_start_time: float = 0.0          # monotonic time when wall-follow started
+        # Wall-follow watchdog (re-armed in _enter_wall_follow): bound the
+        # circumnavigation by absolute time AND by genuine progress toward the
+        # goal, so a robot circling a convex corner or spinning in place can't
+        # wall-follow forever (the 25 s vicinity timeout only guards the phase
+        # BEFORE the robot leaves the hit point).
+        self._wf_best_d_to_goal: float = math.inf
+        self._wf_last_progress_time: float = 0.0
+
+        # FOLLOWING no-progress watchdog (re-armed by _reset_pd on every fresh
+        # FOLLOWING context).  If the robot stops shrinking its distance-to-goal
+        # it is wedged (clipping inflation, pose-jitter oscillation, a path the
+        # costmap silently blocks); we then emit an ERROR so a waiting
+        # navigate() poller (e.g. SEARCH between rollers) advances instead of
+        # blocking on a goal that never ARRIVES.
+        self._follow_best_dist: float = math.inf
+        self._follow_progress_t: float = 0.0
+
+        # WAITING_FOR_PATH bookkeeping (no route to goal → hold + retry plan)
+        self._waitpath_start_time: float = 0.0
+        self._waitpath_last_try: float = 0.0
+        self._waitpath_last_log: float = 0.0
 
         # ── Local costmap (rolling LiDAR memory) ───────────────────────
         self._costmap = LocalCostmap(
@@ -627,8 +692,12 @@ class NavNode(Node):
             label=f'"{name}"',
         )
         if path is None:
-            self._publish_status(f'ERROR: no path to {name}')
-            self._state = _State.IDLE
+            # No route from here to the goal (boxed in / sealed passage).  Hold
+            # and keep retrying instead of failing the goal, so the robot
+            # resumes the moment the way opens (e.g. a door/gate clears).
+            self._current_goal_name = name
+            self._reset_pd()
+            self._enter_waiting_for_path('initial plan found no route')
             return
 
         self.get_logger().info(f'Path found: {len(path)} waypoints to "{name}"')
@@ -697,6 +766,10 @@ class NavNode(Node):
             self._waiting_update(px, py)
             return
 
+        if self._state == _State.WAITING_FOR_PATH:
+            self._waiting_for_path_update(px, py)
+            return
+
         if self._state == _State.WALL_FOLLOWING:
             self._wall_follow_update(px, py)
             return
@@ -726,6 +799,34 @@ class NavNode(Node):
         goal_tol = self.get_parameter('goal_tolerance').value
         if dist_to_goal < goal_tol:
             self._on_arrived()
+            return
+
+        # ── FOLLOWING no-progress watchdog ─────────────────────────────
+        # Track the best (closest) distance-to-goal; if it doesn't improve by
+        # at least follow_progress_eps within follow_progress_timeout seconds
+        # the robot is wedged and will never ARRIVE.  Emit an ERROR status
+        # (NOT a silent IDLE): a polling navigate() returns 'error' on an ERROR
+        # prefix, so SEARCH advances to the next roller instead of blocking on
+        # a goal it can't reach.  The watchdog is re-armed by _reset_pd on every
+        # fresh path (new goal, replan, WAIT→resume), so legitimate replans
+        # grant a fresh window and only a true stall trips it.
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        eps = float(self.get_parameter('follow_progress_eps').value)
+        if dist_to_goal < self._follow_best_dist - eps:
+            self._follow_best_dist = dist_to_goal
+            self._follow_progress_t = now_s
+        elif now_s - self._follow_progress_t > float(
+                self.get_parameter('follow_progress_timeout').value):
+            self.get_logger().error(
+                f'FOLLOWING made no progress toward "{self._current_goal_name}" '
+                f'for {self.get_parameter("follow_progress_timeout").value:.0f} s '
+                '— declaring stuck.'
+            )
+            self._publish_stop()
+            self._cancel_arrived_timer()
+            self._path = []
+            self._state = _State.IDLE
+            self._publish_status(f'ERROR: stuck {self._current_goal_name}')
             return
 
         # Continuous path validity check.  Default behaviour (with
@@ -932,17 +1033,83 @@ class NavNode(Node):
                 )
                 self._enter_wall_follow(px, py)
             else:
-                self.get_logger().error(
-                    f'Wait-for-clear timeout ({timeout:.1f} s) — Bug1 disabled, '
-                    f'giving up on "{self._current_goal_name}".  '
-                    f'Move the obstacle and re-send the goal.'
+                # Obstacle won't clear and no detour exists: hold for the route
+                # to open (door/gate) rather than abandoning the goal.
+                self._enter_waiting_for_path(
+                    f'wait-for-clear timeout ({timeout:.1f} s), Bug1 disabled'
                 )
-                self._publish_stop()
-                self._publish_status(
-                    f'ERROR: blocked {self._current_goal_name}'
-                )
-                self._path = []
-                self._state = _State.IDLE
+
+    # ------------------------------------------------------------------
+    # WAITING_FOR_PATH — no route to the goal: hold position and retry
+    # ------------------------------------------------------------------
+
+    def _enter_waiting_for_path(self, reason: str) -> None:
+        """No route to the goal right now (planner / Bug1 found none): stop and
+        keep re-planning until one opens — e.g. a door/gate clears — instead of
+        giving up.  All the "no path" dead-ends funnel here so a boxed-in robot
+        waits for the way to open rather than aborting the goal.
+
+        Disabled (no_path_retry=false) restores the old behaviour: stop, emit
+        ERROR and drop to IDLE so the caller fails fast.
+        """
+        self._publish_stop()
+        self._path = []
+        if not bool(self.get_parameter('no_path_retry').value):
+            self._state = _State.IDLE
+            self._publish_status(f'ERROR: no path to {self._current_goal_name}')
+            return
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._state != _State.WAITING_FOR_PATH:
+            self._waitpath_start_time = now
+            self._waitpath_last_log = now
+            self.get_logger().warn(
+                f'No path to "{self._current_goal_name}" ({reason}) — holding and '
+                f'retrying every {self.get_parameter("no_path_retry_period").value:.1f} s '
+                'until the route opens.'
+            )
+        self._waitpath_last_try = now
+        self._state = _State.WAITING_FOR_PATH
+        self._publish_status(f'WAITING_FOR_PATH: {self._current_goal_name}')
+
+    def _waiting_for_path_update(self, px: float, py: float) -> None:
+        """While holding for a path: stay stopped and re-plan (live-scan grid,
+        so a cleared dynamic obstacle is seen) every no_path_retry_period.  On
+        success _replan_from_current transitions to FOLLOWING.  With a positive
+        no_path_retry_timeout, give up to ERROR/IDLE after that long so a
+        mission isn't pinned forever on an unreachable goal."""
+        self._publish_stop()
+        now = self.get_clock().now().nanoseconds * 1e-9
+
+        timeout = float(self.get_parameter('no_path_retry_timeout').value)
+        if timeout > 0.0 and (now - self._waitpath_start_time) >= timeout:
+            self.get_logger().error(
+                f'Still no path to "{self._current_goal_name}" after {timeout:.0f} s '
+                '— giving up.'
+            )
+            self._publish_stop()
+            self._path = []
+            self._state = _State.IDLE
+            self._publish_status(f'ERROR: no path to {self._current_goal_name}')
+            return
+
+        # Heartbeat so the operator sees it is still trying (not hung).
+        if now - self._waitpath_last_log >= 10.0:
+            self._waitpath_last_log = now
+            waited = now - self._waitpath_start_time
+            self.get_logger().info(
+                f'WAITING_FOR_PATH: still no route to "{self._current_goal_name}" '
+                f'after {waited:.0f} s — retrying.'
+            )
+
+        period = float(self.get_parameter('no_path_retry_period').value)
+        if now - self._waitpath_last_try < period:
+            return
+        self._waitpath_last_try = now
+        if self._replan_from_current(px, py):
+            self.get_logger().info(
+                f'Route to "{self._current_goal_name}" opened — resuming FOLLOWING.'
+            )
+        # else: still blocked — stay in WAITING_FOR_PATH (status already set).
 
     # ------------------------------------------------------------------
     # Bug1 — wall following (phase 1)
@@ -962,6 +1129,10 @@ class NavNode(Node):
         self._wf_goal = (gx, gy)
         self._wf_left_vicinity = False
         self._wf_start_time = self.get_clock().now().nanoseconds * 1e-9
+        # Arm the wall-follow watchdogs: best-so-far distance to goal (for the
+        # no-progress cap) and the absolute start time (already in _wf_start_time).
+        self._wf_best_d_to_goal = self._d_leave
+        self._wf_last_progress_time = self._wf_start_time
         self._state = _State.WALL_FOLLOWING
         self._publish_status(f'WALL_FOLLOWING: {self._current_goal_name}')
         self.get_logger().info(
@@ -982,9 +1153,20 @@ class NavNode(Node):
                 'Bug1: stuck near hit point for 25 s — attempting live-scan replan'
             )
             if not self._replan_from_current(px, py):
-                self._publish_stop()
-                self._publish_status(f'ERROR: Bug1 timeout {self._current_goal_name}')
-                self._state = _State.IDLE
+                self._enter_waiting_for_path('Bug1 stuck at hit point')
+            return
+
+        # Absolute cap regardless of hit-vicinity.  The 25 s guard above only
+        # fires while _wf_left_vicinity is False, and that flag latches True
+        # forever once the robot moves >0.5 m from the hit point — after which
+        # NO timeout could fire.  Without this an endless convex-corner orbit or
+        # in-place spin would wall-follow indefinitely.
+        if elapsed > float(self.get_parameter('wall_follow_total_timeout').value):
+            self.get_logger().error(
+                'Bug1: wall-follow exceeded total timeout — aborting.'
+            )
+            if not self._replan_from_current(px, py):
+                self._enter_waiting_for_path('Bug1 wall-follow total timeout')
             return
 
         gx, gy = self._wf_goal
@@ -994,6 +1176,22 @@ class NavNode(Node):
         if d_to_goal < self._d_leave:
             self._d_leave = d_to_goal
             self._q_leave = (px, py)
+
+        # No-progress watchdog: if the closest-to-goal distance hasn't improved
+        # within the timeout, the circumnavigation is going nowhere (corner
+        # oscillation / in-place spin) — abort rather than orbit forever.
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        if d_to_goal < self._wf_best_d_to_goal - 0.05:
+            self._wf_best_d_to_goal = d_to_goal
+            self._wf_last_progress_time = now_s
+        elif now_s - self._wf_last_progress_time > float(
+                self.get_parameter('wall_follow_noprogress_timeout').value):
+            self.get_logger().error(
+                'Bug1: wall-follow made no progress — aborting.'
+            )
+            if not self._replan_from_current(px, py):
+                self._enter_waiting_for_path('Bug1 wall-follow no progress')
+            return
 
         # Detect when robot has moved away from hit point
         qhx, qhy = self._q_hit
@@ -1011,9 +1209,7 @@ class NavNode(Node):
             d_hit_to_goal = math.sqrt((gx - qhx) ** 2 + (gy - qhy) ** 2)
             if self._d_leave >= d_hit_to_goal - 0.05:
                 self.get_logger().error('Bug1: obstacle surrounds goal — no path')
-                self._publish_stop()
-                self._publish_status(f'ERROR: Bug1 blocked {self._current_goal_name}')
-                self._state = _State.IDLE
+                self._enter_waiting_for_path('Bug1 obstacle surrounds goal')
                 return
             self._state = _State.RETURNING_LEAVE
             self._publish_status(f'RETURNING_LEAVE: {self._current_goal_name}')
@@ -1060,10 +1256,23 @@ class NavNode(Node):
         dx, dy = lx - px, ly - py
         dist = math.sqrt(dx ** 2 + dy ** 2)
 
-        tol = self.get_parameter('goal_tolerance').value
+        # The leave point is an INTERMEDIATE waypoint, not a dock: the 3 cm
+        # goal_tolerance is both semantically wrong and physically unreachable
+        # here (the return speed decays below the motor deadband well before
+        # 3 cm).  Use a looser band tied to the lookahead so arrival is real.
+        tol = max(self.get_parameter('goal_tolerance').value,
+                  0.5 * self.get_parameter('lookahead_distance').value)
         if dist < tol:
             self.get_logger().info('Bug1: arrived at leave point, replanning A*…')
-            self._replan_from_current(px, py)
+            if not self._replan_from_current(px, py):
+                # No path even from the closest-to-goal point on the boundary →
+                # hold and keep retrying (the route may open) instead of
+                # re-calling the failing replan every tick or aborting the goal.
+                self.get_logger().error(
+                    f'Bug1: at leave point but replan found no path for '
+                    f'"{self._current_goal_name}".'
+                )
+                self._enter_waiting_for_path('Bug1 leave-point replan no path')
             return
 
         heading_error = self._wrap_angle(math.atan2(dy, dx) - theta)
@@ -1087,6 +1296,15 @@ class NavNode(Node):
 
         omega = self._clamp(kp * ctrl_error, -wmax, wmax)
         speed = sign * vmax * 0.7 * max(0.0, math.cos(ctrl_error)) * min(1.0, dist / 0.3)
+
+        # Keep the final creep above the motor deadband (mirrors FOLLOWING and
+        # the heading-align floor) so the loosened leave tolerance above is
+        # actually reachable instead of stalling cm short.
+        approach_min = self.get_parameter('approach_speed_min').value
+        if (approach_min > 0.0
+                and abs(ctrl_error) < math.radians(20.0)
+                and 0.0 < abs(speed) < approach_min):
+            speed = sign * approach_min
 
         cmd = Twist()
         cmd.linear.x = speed
@@ -1556,6 +1774,9 @@ class NavNode(Node):
         self._prev_heading_error = 0.0
         self._d_filt = 0.0
         self._pd_valid = False
+        # Re-arm the FOLLOWING no-progress watchdog for this fresh path context.
+        self._follow_best_dist = math.inf
+        self._follow_progress_t = self.get_clock().now().nanoseconds * 1e-9
 
     # ------------------------------------------------------------------
     # Publishing helpers

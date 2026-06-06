@@ -135,12 +135,17 @@ nav_node:
     # before another validity-triggered replan can fire.  Only used when
     # enable_validity_replan: true.
     replan_cooldown:             3.0   # s
-    # Master switch.  When false (default), the robot commits to the
-    # path produced by the planner and never re-plans while FOLLOWING.
-    # Real obstacles are caught by the safety bubble + WAIT + Bug1.
-    # Flip to true if you want continuous re-planning around new
-    # obstacles detected in the costmap.
-    enable_validity_replan:      false
+    # Master switch.  Set TRUE here as the Bug1 ENTRY trigger: while
+    # FOLLOWING, if the planned path is blocked in the local costmap for
+    # `path_blocked_hysteresis` ticks the node re-plans around it; if that
+    # re-plan also fails it enters WAITING_FOR_CLEAR → (after
+    # wait_for_clear_timeout) Bug1 wall-follow.  This is the textbook Bug1
+    # trigger (an obstacle the global planner cannot route around) and,
+    # unlike the safety bubble, does NOT stop the robot in open space on
+    # spurious LiDAR rays — so it doesn't reintroduce the false-stop problem
+    # that motivated turning the bubble off.  The hysteresis (12) + cooldown
+    # (3 s) + inflation_factor (0.5) below keep it from flapping.
+    enable_validity_replan:      true
 
     # ── Runtime safety bubble (off by default) ────────────────────────
     # Margen ahora viene del `inflation_radius` del planeador, no de un
@@ -156,10 +161,47 @@ nav_node:
     # each tick) before either (a) entering Bug1 if enable_bug1=true,
     # or (b) giving up on the goal if enable_bug1=false (default).
     wait_for_clear_timeout:      5.0   # s
-    # Bug1 fallback is OFF by default.  In a fully-mapped environment
-    # the planner already routes around static obstacles, and Bug1's
-    # wall-follow almost always terminates with "Bug1 blocked" because
-    # the circumnavigation can't get closer to the goal than the
-    # original hit point.  Set true if operating in maps with
-    # unmodelled obstacles you want the robot to physically go around.
-    enable_bug1:                 false
+    # Bug1 fallback.  Enabled together with enable_validity_replan above so
+    # the robot physically circumnavigates an unmodelled obstacle the global
+    # planner can't route around (path blocked → replan fails → WAIT → Bug1).
+    # Note: even when on, Bug1 only ENGAGES if the live-scan re-plan keeps
+    # failing for the full wait_for_clear_timeout; if a detour exists the
+    # robot just resumes FOLLOWING the new path.  To force a visible
+    # wall-follow for a demo, block the corridor so no A* detour exists.
+    enable_bug1:                 true
+
+    # ── Bug1 wall-follow watchdogs ────────────────────────────────────
+    # Bound a single circumnavigation so it can never run forever (the
+    # legacy 25 s guard only covers the phase before the robot leaves the
+    # hit point).  total = absolute wall-clock cap; noprogress = abort if
+    # the closest-to-goal distance stops improving.  Both end the wall-
+    # follow with a live-scan replan, or a clean ERROR→IDLE if none exists.
+    wall_follow_total_timeout:      90.0   # s
+    wall_follow_noprogress_timeout: 15.0   # s
+
+    # ── FOLLOWING stuck watchdog ──────────────────────────────────────
+    # If distance-to-goal hasn't dropped by follow_progress_eps within
+    # follow_progress_timeout s while FOLLOWING, the robot is wedged: it
+    # emits "ERROR: stuck <goal>" instead of polling forever, so the
+    # mission layer (e.g. SEARCH cycling rollers) moves on to the next
+    # candidate rather than hanging on a goal it can't reach.
+    follow_progress_timeout:     12.0   # s
+    follow_progress_eps:         0.05   # m
+
+    # ── No-path retry (hold-and-wait for a blocked route to open) ──────
+    # When the planner (A* or Bug1) finds NO route to the goal — robot
+    # boxed in, a gate/door sealing the only way through — the robot stops
+    # and re-plans every `no_path_retry_period` s instead of giving up, and
+    # resumes the instant a path appears (e.g. the door opens). For this to
+    # recover, the blockage must be a DYNAMIC obstacle the LiDAR sees clear
+    # (not a wall baked into the saved map). Status: WAITING_FOR_PATH:<goal>.
+    #   no_path_retry_timeout <= 0 → retry forever (operator can still abort
+    #     by publishing "stop" on /goal_waypoint, e.g. mission PAUSE/STOP).
+    #   > 0 → give up with "ERROR: no path" after that many seconds so a
+    #     mission can move on (e.g. SEARCH skips to the next candidate).
+    # This is SEPARATE from follow_progress_timeout above: that one fires
+    # when a path EXISTS but the robot can't make progress on it (→ ERROR,
+    # so SEARCH skips a wedged roller); this one fires when there is NO path.
+    no_path_retry:               true
+    no_path_retry_period:        2.0    # s between replan attempts
+    no_path_retry_timeout:       -1.0   # s; <=0 = retry forever
