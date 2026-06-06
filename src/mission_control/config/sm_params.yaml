@@ -106,6 +106,19 @@ state_machine_node:
     # old stall-only behaviour.
     pick_vision_stop:     true
     pick_vision_fresh_s:  1.0     # s — ignore a should_stop older than this (dead detector)
+    # Camera-freeze safety for the forward creep. /approach_stop/should_stop is
+    # republished every processed frame, so its stamp is the vision heartbeat;
+    # if it goes stale the feed froze and the robot is creeping BLIND, so a
+    # frozen frame can sail it past the ideal stop before the signal returns
+    # (observed: a ~1 s freeze right at the ideal pose, no time to brake). While
+    # stale, scale the creep speed by pick_vision_stale_factor.
+    #   pick_vision_stale_slow_s : seconds of no camera update before slowing.
+    #     MUST be above the detector's normal frame interval or it false-trips
+    #     in normal operation (raise it if logo_stop_debug runs slow on the Jetson).
+    #   pick_vision_stale_factor : speed multiplier while stale (0 = hold in
+    #     place until the feed recovers; 1.0 = feature OFF).
+    pick_vision_stale_slow_s:  0.4
+    pick_vision_stale_factor:  0.25
     # Logo CENTERING para el approach del ROLLER (gira para mantener el pallet
     # centrado, así el lifter entra derecho). 0 = creep recto. El rack usa sus
     # propios pick_rack_center_*.
