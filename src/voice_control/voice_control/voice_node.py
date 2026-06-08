@@ -29,6 +29,7 @@ import threading
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
+from geometry_msgs.msg import Twist
 
 from voice_control.command_parser import parse_command
 from voice_control.hmm_recognizer import HMMRecognizer
@@ -70,6 +71,12 @@ class VoiceNode(Node):
         # ── ROS interfaces ────────────────────────────────────────────
         self._voice_pub   = self.create_publisher(String, '/voice_command', 10)
         self._mission_pub = self.create_publisher(String, '/mission', 10)
+        self._cmd_vel_pub = self.create_publisher(Twist,  '/cmd_vel_in', 10)
+
+        # Active motion direction: 'forward' | 'left' | 'right' | None
+        self._active_motion: str | None = None
+        # Publish at 10 Hz while a motion command is active
+        self.create_timer(0.1, self._motion_timer_cb)
 
         # ── Recognizer ────────────────────────────────────────────────
         self._recognizer = HMMRecognizer(models_dir=models_dir)
@@ -186,23 +193,55 @@ class VoiceNode(Node):
             self.get_logger().info(f'Recognised: "{word}"')
             self._handle_word(word)
 
+    # ── Motion timer ──────────────────────────────────────────────────
+
+    def _motion_timer_cb(self) -> None:
+        if self._active_motion is None:
+            return
+        twist = Twist()
+        if self._active_motion == 'forward':
+            twist.linear.x = 0.15
+        elif self._active_motion == 'left':
+            twist.angular.z = 0.5
+        elif self._active_motion == 'right':
+            twist.angular.z = -0.5
+        self._cmd_vel_pub.publish(twist)
+
     # ── Shared word handling ───────────────────────────────────────────
 
     def _handle_word(self, word: str) -> None:
-        msg = String()
-        msg.data = word
-        self._voice_pub.publish(msg)
+        raw = String()
+        raw.data = word
+        self._voice_pub.publish(raw)
 
         self._word_buffer.append(word)
         if len(self._word_buffer) > self._word_buffer_size:
             self._word_buffer.pop(0)
 
         command = parse_command(self._word_buffer)
-        if command is not None:
-            self.get_logger().info(f'Command parsed: {command}')
+        if command is None:
+            return
+
+        self.get_logger().info(f'Command parsed: {command}')
+        category = command['category']
+
+        if category == 'mission':
             m = String()
-            m.data = json.dumps(command)
+            m.data = json.dumps(command['payload'])
             self._mission_pub.publish(m)
+            self._word_buffer.clear()
+
+        elif category == 'control':
+            # "stop" also halts any active motion
+            if command['word'] == 'stop':
+                self._active_motion = None
+            ctrl = String()
+            ctrl.data = command['word']
+            self._voice_pub.publish(ctrl)
+            self._word_buffer.clear()
+
+        elif category == 'motion':
+            self._active_motion = command['direction']
             self._word_buffer.clear()
 
     # ── Lifecycle ─────────────────────────────────────────────────────
