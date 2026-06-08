@@ -1,7 +1,0 @@
-Carpeta de media del README. Coloca aquí:
-  demo.mp4 (o demo.gif)  — video de una misión (real o sim) [hero]
-  pista.jpg              — foto cenital de la pista real
-  robot.jpg              — foto del Puzzlebot físico
-  dashboard.png          — screenshot del dashboard web
-  gemelo.png             — screenshot del gemelo en Gazebo (arucos + racks)
-  rviz.png               — screenshot de RViz (mapa + scan + robot)

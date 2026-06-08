@@ -15,12 +15,11 @@ Reto **TE3003B** · Integración de Robótica y Sistemas Inteligentes · Tecnol�
 
 </div>
 
-<!-- DEMO PRINCIPAL — opción A (recomendada): arrastra el .mp4 al editar el README
-     en GitHub y pega aquí la URL https://github.com/user-attachments/assets/...
-     opción B: deja este GIF (coloca el archivo en assets/demo.gif) -->
 <div align="center">
 
-![Demo de misión](assets/demo.gif)
+[![Misión 1 — Puzzlebot AMR](https://img.youtube.com/vi/AEM72Lx7E6k/hqdefault.jpg)](https://www.youtube.com/shorts/AEM72Lx7E6k)
+
+▶️ **[Ver la Misión 1 en video (YouTube)](https://www.youtube.com/shorts/AEM72Lx7E6k)**
 
 </div>
 
@@ -63,9 +62,11 @@ y un **gemelo digital** que refleja al robot real en vivo.
 
 ## 🎬 Demo
 
-| Misión completa (real) | Gemelo digital (Gazebo) | Dashboard web |
+| Misión 1 — robot real ▶️ | Gemelo digital (Gazebo) ▶️ | Dashboard web |
 |:--:|:--:|:--:|
-| ![demo](assets/demo.gif) | ![gemelo](assets/gemelo.png) | ![dashboard](assets/dashboard.png) |
+| [![Misión 1](https://img.youtube.com/vi/AEM72Lx7E6k/hqdefault.jpg)](https://www.youtube.com/shorts/AEM72Lx7E6k) | [![Gemelo digital](assets/gemelo.jpg)](assets/gemelo.mp4) | ![dashboard](assets/dashboard.jpg) |
+
+> El robot real ejecuta **Misión 1 (Rollers → Camión)**; el **gemelo digital** lo refleja en vivo en Gazebo; el **dashboard** controla y monitorea la misión.
 
 ---
 
@@ -222,9 +223,6 @@ ros2 topic echo /aruco_ids
 ros2 topic echo /aruco_pose_estimate
 ```
 
-> 🖼️ *Visualización (RViz + gemelo):*
-> ![RViz](assets/rviz.png)
-
 ---
 
 ## 🧩 Subsistemas a detalle
@@ -236,6 +234,9 @@ con scoring opcional en **CUDA**) → **resample** → **scan-to-map refine**. U
 **graph SLAM** (keyframes + cierre de lazo) y re-rasteriza el mapa. Modos `mapping` / `navigation`
 (carga `.pgm` guardado). `puzzlebot_sim` es un simulador 2D propio que modela patinaje y latencia del
 LiDAR para tunear SLAM de forma realista.
+
+> 🗺️ *RViz: mapa SLAM + nube de partículas del MCL (flechas) + scan LiDAR + ArUcos detectados con sus IDs (arriba, el `debug_image` de `aruco_localization`):*
+> ![SLAM Montecarlo + ArUco](assets/mapa_montecarlo.jpg)
 
 ### 🎯 Localización ArUco (`perception` + `slam`)
 `aruco_localization` detecta los marcadores, calcula la pose absoluta del robot
