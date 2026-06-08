@@ -376,7 +376,7 @@ Tecnológico de Monterrey (FJ2026).
 | Juan José Jáuregui Barba | A00836722 |
 | Hugo Daniel Castillo Ovando | A00836025 |
 | Rosendo De Los Ríos Moreno | A01198515 |
-| Jordan Arturo Palafox | A00835705 |
+| Jordan Arturo Palafox Salinas | A00835705 |
 
 ---
 
