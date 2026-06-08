@@ -63,11 +63,22 @@ y un **gemelo digital** que refleja al robot real en vivo.
 
 ## 🎬 Demo
 
-| Misión 1 — robot real ▶️ | Gemelo digital (Gazebo) ▶️ | Dashboard web |
-|:--:|:--:|:--:|
-| [![Misión 1](https://img.youtube.com/vi/AEM72Lx7E6k/hqdefault.jpg)](https://www.youtube.com/shorts/AEM72Lx7E6k) | [![Gemelo digital](assets/gemelo.jpg)](assets/gemelo.mp4) | ![dashboard](assets/dashboard.jpg) |
+> 🎥 La **[Misión 1 completa (Rollers → Camión)](https://www.youtube.com/shorts/AEM72Lx7E6k)** está en el video de arriba ⬆️
 
-> El robot real ejecuta **Misión 1 (Rollers → Camión)**; el **gemelo digital** lo refleja en vivo en Gazebo; el **dashboard** controla y monitorea la misión.
+<table align="center">
+  <tr>
+    <td align="center" width="50%">
+      <a href="assets/gemelo.mp4"><img src="assets/gemelo.jpg" height="300" alt="Gemelo digital en Gazebo"></a>
+      <br><b>🪞 Gemelo digital — Gazebo</b>
+      <br><sub>Espejo en vivo del robot real · clic para el video ▶️</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/dashboard.jpg" height="300" alt="Dashboard web">
+      <br><b>🖥️ Dashboard web</b>
+      <br><sub>Control de misión, telemetría y streaming de cámara</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
