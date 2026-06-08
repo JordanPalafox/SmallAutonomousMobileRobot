@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🤖 Puzzlebot AMR — Robot Montacargas Autónomo
+# 🤖 Puzzlebot AMR — Autonomous Forklift Robot
 
-**Almacén autónomo a escala: SLAM propio, localización por ArUco, navegación A\*, visión, voz y gemelo digital en vivo.**
+**Autonomous warehouse at scale: in-house SLAM, ArUco localization, A\* navigation, vision, voice and a live digital twin.**
 
-Reto **TE3003B** · Integración de Robótica y Sistemas Inteligentes · Tecnológico de Monterrey (FJ2026)
+**TE3003B** Challenge · Robotics and Intelligent Systems Integration · Tecnológico de Monterrey (FJ2026)
 
 ![ROS 2](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros&logoColor=white)
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04-E95420?logo=ubuntu&logoColor=white)
@@ -17,360 +17,360 @@ Reto **TE3003B** · Integración de Robótica y Sistemas Inteligentes · Tecnol�
 
 <div align="center">
 
-[![Misión 1 — Puzzlebot AMR](https://img.youtube.com/vi/AEM72Lx7E6k/hqdefault.jpg)](https://www.youtube.com/shorts/AEM72Lx7E6k)
+[![Mission 1 — Puzzlebot AMR](https://img.youtube.com/vi/AEM72Lx7E6k/hqdefault.jpg)](https://www.youtube.com/shorts/AEM72Lx7E6k)
 
-▶️ **[Ver la Misión 1 en video (YouTube)](https://www.youtube.com/shorts/AEM72Lx7E6k)**
+▶️ **[Watch Mission 1 on video (YouTube)](https://www.youtube.com/shorts/AEM72Lx7E6k)**
 
 </div>
 
 ---
 
-## 📑 Tabla de contenidos
-- [Sobre el proyecto](#-sobre-el-proyecto)
+## 📑 Table of contents
+- [About the project](#-about-the-project)
 - [Demo](#-demo)
-- [Características](#-características)
-- [Arquitectura del sistema](#-arquitectura-del-sistema)
-- [Stack tecnológico](#-stack-tecnológico)
+- [Features](#-features)
+- [System architecture](#-system-architecture)
+- [Tech stack](#-tech-stack)
 - [Hardware](#-hardware)
-- [Estructura del repositorio](#-estructura-del-repositorio)
-- [Instalación](#-instalación)
-- [Uso](#-uso)
-- [Comandos más útiles](#-comandos-más-útiles)
-- [Subsistemas a detalle](#-subsistemas-a-detalle)
-- [Configuración](#-configuración)
-- [Equipo](#-equipo)
+- [Repository structure](#-repository-structure)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Most useful commands](#-most-useful-commands)
+- [Subsystems in detail](#-subsystems-in-detail)
+- [Configuration](#-configuration)
+- [Team](#-team)
 
 ---
 
-## 🎯 Sobre el proyecto
+## 🎯 About the project
 
-El **Puzzlebot AMR** es un robot montacargas autónomo (Autonomous Mobile Robot) que opera en un
-**almacén a escala (3.65 × 4.85 m)**. Mueve pallets entre tres tipos de zona:
+The **Puzzlebot AMR** is an autonomous forklift robot (Autonomous Mobile Robot) that operates in a
+**scaled warehouse (3.65 × 4.85 m)**. It moves pallets between three types of zones:
 
-- 🚚 **Camiones (trucks)** — carga / descarga
-- 🗄️ **Racks** — estanterías de 2 niveles
-- 🛞 **Rollers** — mesas de rodillos (staging)
+- 🚚 **Trucks** — loading / unloading
+- 🗄️ **Racks** — 2-level shelving
+- 🛞 **Rollers** — roller tables (staging)
 
-Toda la pila (SLAM, localización, navegación, control, percepción, voz) es **implementación propia
-— sin Nav2 ni Whisper**. El sistema corre **distribuido**: la Jetson a bordo del robot maneja el
-sensado y SLAM en tiempo real, y una laptop corre la planeación, la lógica de misión, el dashboard
-y un **gemelo digital** que refleja al robot real en vivo.
+The entire stack (SLAM, localization, navigation, control, perception, voice) is **built in-house
+— no Nav2, no Whisper**. The system runs **distributed**: the on-board Jetson handles real-time
+sensing and SLAM, while a laptop runs planning, mission logic, the dashboard and a **digital twin**
+that mirrors the real robot live.
 
-> 📷 *Pista real y robot:*
-> ![Pista y robot](assets/pista.jpg)
+> 📷 *Real track and robot:*
+> ![Track and robot](assets/pista.jpg)
 
 ---
 
 ## 🎬 Demo
 
-> 🎥 La **[Misión 1 completa (Rollers → Camión)](https://www.youtube.com/shorts/AEM72Lx7E6k)** está en el video de arriba ⬆️
+> 🎥 The **[full Mission 1 (Rollers → Truck)](https://www.youtube.com/shorts/AEM72Lx7E6k)** is in the video above ⬆️
 
 <table align="center">
   <tr>
     <td align="center" width="50%">
-      <a href="assets/gemelo.mp4"><img src="assets/gemelo.jpg" height="300" alt="Gemelo digital en Gazebo"></a>
-      <br><b>🪞 Gemelo digital — Gazebo</b>
-      <br><sub>Espejo en vivo del robot real · clic para el video ▶️</sub>
+      <a href="assets/gemelo.mp4"><img src="assets/gemelo.jpg" height="300" alt="Digital twin in Gazebo"></a>
+      <br><b>🪞 Digital twin — Gazebo</b>
+      <br><sub>Live mirror of the real robot · click for the video ▶️</sub>
     </td>
     <td align="center" width="50%">
-      <img src="assets/dashboard.jpg" height="300" alt="Dashboard web">
-      <br><b>🖥️ Dashboard web</b>
-      <br><sub>Control de misión, telemetría y streaming de cámara</sub>
+      <img src="assets/dashboard.jpg" height="300" alt="Web dashboard">
+      <br><b>🖥️ Web dashboard</b>
+      <br><sub>Mission control, telemetry and camera streaming</sub>
     </td>
   </tr>
 </table>
 
 ---
 
-## ✨ Características
+## ✨ Features
 
-- 🧭 **SLAM propio en C++** — filtro de partículas (MCL/AMCL) con scoring opcional en **CUDA**, ICP scan-to-scan + scan-to-map, y **graph SLAM con cierre de lazo**.
-- 🎯 **Localización por ArUco** — 15 balizas fijas que **rescatan** al MCL cuando deriva en zonas ambiguas (no lo reemplazan; lo hacen robusto).
-- 🪞 **Gemelo digital en vivo** — el robot virtual en Gazebo **sigue la pose real** del robot físico (visualizador del entorno, no una simulación con físicas).
-- 🗺️ **Navegación sin Nav2** — A\* (planeador global) + Bug1 (evasión reactiva) + pure-pursuit.
-- 🧠 **Máquina de estados YASMIN** — misiones completas pick & place con debugger en vivo.
-- 👁️ **Visión** — detección ArUco, *docking* con QR y clasificador del logo (parada de visión en el pick).
-- 🎙️ **Voz sin Whisper** — pipeline propio **MFCC → VQ → HMM**.
-- 🖥️ **Dashboard web** — Flask + SocketIO con telemetría, streaming de cámara y control de misión.
-- 🏗️ **Lifter por FPGA** — control de altura vía SPI (Tang Nano 20K).
+- 🧭 **In-house SLAM in C++** — particle filter (MCL/AMCL) with optional **CUDA** scoring, ICP scan-to-scan + scan-to-map, and **graph SLAM with loop closure**.
+- 🎯 **ArUco localization** — 15 fixed beacons that **rescue** the MCL when it drifts in ambiguous areas (they don't replace it; they make it robust).
+- 🪞 **Live digital twin** — the virtual robot in Gazebo **follows the real pose** of the physical robot (an environment visualizer, not a physics simulation).
+- 🗺️ **Navigation without Nav2** — A\* (global planner) + Bug1 (reactive avoidance) + pure-pursuit.
+- 🧠 **YASMIN state machine** — full pick & place missions with a live debugger.
+- 👁️ **Vision** — ArUco detection, QR *docking* and logo classifier (vision stop at pick time).
+- 🎙️ **Voice without Whisper** — in-house **MFCC → VQ → HMM** pipeline.
+- 🖥️ **Web dashboard** — Flask + SocketIO with telemetry, camera streaming and mission control.
+- 🏗️ **FPGA-driven lifter** — height control over SPI (Tang Nano 20K).
 
 ---
 
-## 🏛️ Arquitectura del sistema
+## 🏛️ System architecture
 
-Setup **distribuido** (mismo `ROS_DOMAIN_ID`, relojes sincronizados con chrony):
+**Distributed** setup (same `ROS_DOMAIN_ID`, clocks synced with chrony):
 
 ```
-        JETSON NANO (a bordo)                          LAPTOP (off-board)
+        JETSON NANO (on-board)                         LAPTOP (off-board)
   ┌───────────────────────────────┐           ┌──────────────────────────────────┐
   │ robot.launch.py               │           │ laptop.launch.py                  │
   │  • LiDAR /scan  • micro-ROS    │   WiFi    │  • navigation (A* + Bug1)         │
   │  • real_odom → /…/odom         │ ◄═══════► │  • mission_control (YASMIN)       │
   │  • slam_node (MCL+CUDA+ICP)    │   DDS     │  • dashboard (Flask)              │
   │    → /slam_pose, /map, TF      │           │  • voice_control (MFCC+VQ+HMM)    │
-  │  • aruco_localization          │           │  • RViz + gemelo digital (Gazebo) │
+  │  • aruco_localization          │           │  • RViz + digital twin (Gazebo)   │
   │  • lifting (FPGA/SPI)          │           │    └ gemelo_mirror ← /slam_pose   │
   │  • qr docking / logo stop      │           └──────────────────────────────────┘
   └───────────────────────────────┘
 ```
 
-**Cadena de control (`/cmd_vel`)** — *todo* nodo upstream publica a **`/cmd_vel_in`**:
+**Control chain (`/cmd_vel`)** — *every* upstream node publishes to **`/cmd_vel_in`**:
 ```
-/cmd_vel_in ──► twist_relay (rampa anti-brownout) ──► /cmd_vel ──► micro-ROS ──► motores
+/cmd_vel_in ──► twist_relay (anti-brownout ramp) ──► /cmd_vel ──► micro-ROS ──► motors
 ```
 
-**Localización (jerarquía):** Monte Carlo (LiDAR vs mapa) es el localizador **principal**; los
-ArUco son **balizas de rescate** que re-anclan la creencia cuando deriva.
+**Localization (hierarchy):** Monte Carlo (LiDAR vs map) is the **primary** localizer; the
+ArUcos are **rescue beacons** that re-anchor the belief when it drifts.
 ```
-cámara /video_source/raw ─► aruco_localization ─► /aruco_pose_estimate ─► slam_node.onAruco
-                                                                          (re-siembra el MCL)
+camera /video_source/raw ─► aruco_localization ─► /aruco_pose_estimate ─► slam_node.onAruco
+                                                                          (re-seeds the MCL)
 ```
 
 ---
 
-## 🛠️ Stack tecnológico
+## 🛠️ Tech stack
 
-| Capa | Tecnología |
+| Layer | Technology |
 |---|---|
 | Middleware | **ROS 2 Humble** (Ubuntu 22.04) |
-| Simulación / gemelo | **Gazebo Ignition Fortress** + `ros_gz` |
-| SLAM | C++ propio: **MCL/AMCL** (partículas) · **CUDA** (scoring) · **ICP** scan-match · **pose-graph** + loop closure · `Eigen` |
-| Localización | **ArUco** `DICT_ARUCO_ORIGINAL` (5×5, 9 cm) — balizas de rescate del MCL |
-| Navegación | **A\*** + **Bug1** + **pure-pursuit** (sin Nav2) |
-| Misiones | **YASMIN** (state machine) con debugger en vivo |
-| Visión | **OpenCV** — ArUco, QR pose (`solvePnP`/IPPE), clasificador de logo (`weights.pt`) |
-| Voz | **MFCC + VQ + HMM** propio (`numpy`/`scipy`, sin Whisper) |
-| Dashboard | **Flask + Flask-SocketIO** + streaming `cv2` |
-| Control | `ros2_control` (solo en Gazebo) · cinemática diferencial propia (real) |
-| Lifter | **FPGA Tang Nano 20K** vía **SPI** (`/dev/spidev0.0`) |
+| Simulation / twin | **Gazebo Ignition Fortress** + `ros_gz` |
+| SLAM | In-house C++: **MCL/AMCL** (particles) · **CUDA** (scoring) · **ICP** scan-match · **pose-graph** + loop closure · `Eigen` |
+| Localization | **ArUco** `DICT_ARUCO_ORIGINAL` (5×5, 9 cm) — MCL rescue beacons |
+| Navigation | **A\*** + **Bug1** + **pure-pursuit** (no Nav2) |
+| Missions | **YASMIN** (state machine) with a live debugger |
+| Vision | **OpenCV** — ArUco, QR pose (`solvePnP`/IPPE), logo classifier (`weights.pt`) |
+| Voice | In-house **MFCC + VQ + HMM** (`numpy`/`scipy`, no Whisper) |
+| Dashboard | **Flask + Flask-SocketIO** + `cv2` streaming |
+| Control | `ros2_control` (Gazebo only) · in-house differential kinematics (real) |
+| Lifter | **FPGA Tang Nano 20K** over **SPI** (`/dev/spidev0.0`) |
 
 ---
 
 ## 🔩 Hardware
 
-| Componente | Detalle |
+| Component | Detail |
 |---|---|
-| Cómputo a bordo | **NVIDIA Jetson Nano** |
+| On-board compute | **NVIDIA Jetson Nano** |
 | LiDAR | **RPLidar A1** → `/scan` (10 Hz) |
-| Cámara | **PiCamera** (640×360) → `/video_source/raw` |
-| Encoders / motores | Hackerboard MCR2 vía **micro-ROS** (`/VelocityEncL,R`, `/cmd_vel`) |
-| Lifter | **FPGA Tang Nano 20K** (SPI) → niveles de altura |
-| Marcadores | 15 **ArUco** 5×5 de **9 cm**, fijos en muros y costados de racks |
-| Pista | Almacén a escala **3.65 × 4.85 m** |
+| Camera | **PiCamera** (640×360) → `/video_source/raw` |
+| Encoders / motors | Hackerboard MCR2 via **micro-ROS** (`/VelocityEncL,R`, `/cmd_vel`) |
+| Lifter | **FPGA Tang Nano 20K** (SPI) → height levels |
+| Markers | 15 **ArUco** 5×5, **9 cm**, fixed on walls and rack sides |
+| Track | Scaled warehouse **3.65 × 4.85 m** |
 
 ---
 
-## 📂 Estructura del repositorio
+## 📂 Repository structure
 
 ```
 src/
-├── bringup/          # Launches de orquestación (sim, robot, laptop, all_pc)
-├── description/      # URDF/xacro, mundos Gazebo (almacen_racks), meshes, gemelo
-├── controller/       # Odometría, cinemática, twist_relay, gemelo_mirror
+├── bringup/          # Orchestration launches (sim, robot, laptop, all_pc)
+├── description/      # URDF/xacro, Gazebo worlds (almacen_racks), meshes, twin
+├── controller/       # Odometry, kinematics, twist_relay, gemelo_mirror
 ├── slam/             # C++: slam_node (MCL+CUDA+ICP+graph), puzzlebot_sim
 ├── navigation/       # A* + Bug1 + pure-pursuit, waypoint_recorder
-├── perception/       # ArUco, QR docking, logo classifier, calibración
-├── mission_control/  # Máquina de estados YASMIN (misiones)
+├── perception/       # ArUco, QR docking, logo classifier, calibration
+├── mission_control/  # YASMIN state machine (missions)
 ├── voice_control/    # MFCC + VQ + HMM
-├── dashboard/        # Web Flask + SocketIO
-└── lifting/          # HAL GPIO/SPI → FPGA
+├── dashboard/        # Flask + SocketIO web
+└── lifting/          # GPIO/SPI HAL → FPGA
 ```
 
 ---
 
-## ⚙️ Instalación
+## ⚙️ Installation
 
-**Requisitos:** Ubuntu 22.04 + ROS 2 Humble.
+**Requirements:** Ubuntu 22.04 + ROS 2 Humble.
 
 ```bash
-# 1. Clonar dentro de un workspace
+# 1. Clone inside a workspace
 git clone https://github.com/JordanPalafox/SmallAutonomousMobileRobot.git
 cd SmallAutonomousMobileRobot
 
-# 2. Dependencias del sistema (¡necesarias para el sim/gemelo!)
+# 2. System dependencies (required for the sim/twin!)
 sudo apt update && sudo apt install -y \
   ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui \
   ros-humble-topic-tools ros-humble-ros-gz \
   ros-humble-robot-state-publisher ros-humble-xacro ros-humble-rviz2
 
-# 3. Dependencias Python
+# 3. Python dependencies
 pip install numpy scipy opencv-contrib-python yasmin flask flask-socketio
 
-# 4. Compilar y sourcear
+# 4. Build and source
 colcon build --symlink-install
 source install/setup.bash
 ```
 
 ---
 
-## ▶️ Uso
+## ▶️ Usage
 
-### Simulación completa (un comando)
-Gazebo (gemelo) + SLAM + navegación + misiones + dashboard + RViz:
+### Full simulation (one command)
+Gazebo (twin) + SLAM + navigation + missions + dashboard + RViz:
 ```bash
 ros2 launch bringup sim.launch.py
-ros2 launch bringup sim.launch.py start_mode:=mapping   # construir mapa primero
+ros2 launch bringup sim.launch.py start_mode:=mapping   # build the map first
 ```
 
-### Robot real (distribuido)
+### Real robot (distributed)
 ```bash
-# En la Jetson:
+# On the Jetson:
 ros2 launch bringup robot.launch.py
 
-# En la laptop (gemelo digital en vivo con gemelo:=true):
+# On the laptop (live digital twin with gemelo:=true):
 ros2 launch bringup laptop.launch.py gemelo:=true
 ```
 
-### Robot real en una sola máquina
+### Real robot on a single machine
 ```bash
 ros2 launch bringup all_pc.launch.py
 ```
 
 ---
 
-## ⌨️ Comandos más útiles
+## ⌨️ Most useful commands
 
-> Recuerda **`source install/setup.bash`** en cada terminal nueva.
+> Remember to **`source install/setup.bash`** in every new terminal.
 
-### 🔨 Build & entorno
+### 🔨 Build & environment
 ```bash
-colcon build --symlink-install               # compilar todo
-colcon build --packages-select slam          # recompilar solo un paquete
-source install/setup.bash                     # sourcear el workspace
+colcon build --symlink-install               # build everything
+colcon build --packages-select slam          # rebuild a single package
+source install/setup.bash                     # source the workspace
 ```
 
-### 🚀 Lanzar el sistema
+### 🚀 Launch the system
 ```bash
-ros2 launch bringup sim.launch.py                      # SIM completa (gemelo+SLAM+nav+misiones+dashboard)
-ros2 launch bringup sim.launch.py start_mode:=mapping  # construir el mapa primero
-ros2 launch bringup robot.launch.py                    # [Jetson] robot real (sensado+SLAM+lifter)
-ros2 launch bringup laptop.launch.py gemelo:=true      # [laptop] nav+misiones+dashboard+RViz+gemelo en vivo
-ros2 launch bringup all_pc.launch.py                   # todo en una sola máquina
+ros2 launch bringup sim.launch.py                      # full SIM (twin+SLAM+nav+missions+dashboard)
+ros2 launch bringup sim.launch.py start_mode:=mapping  # build the map first
+ros2 launch bringup robot.launch.py                    # [Jetson] real robot (sensing+SLAM+lifter)
+ros2 launch bringup laptop.launch.py gemelo:=true      # [laptop] nav+missions+dashboard+RViz+live twin
+ros2 launch bringup all_pc.launch.py                   # everything on a single machine
 ```
 
-### 🎮 Mover el robot (todo entra por `/cmd_vel_in`)
+### 🎮 Move the robot (everything goes through `/cmd_vel_in`)
 ```bash
 ros2 topic pub /cmd_vel_in geometry_msgs/msg/Twist "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
-ros2 launch controller joystick_teleop.launch.py       # teleop con joystick
+ros2 launch controller joystick_teleop.launch.py       # joystick teleop
 ```
 
-### 🧠 Misiones (lo más fácil: el dashboard en http://localhost:8080)
+### 🧠 Missions (easiest: the dashboard at http://localhost:8080)
 ```bash
-ros2 topic echo /robot_state                                                   # estado actual de la SM
-ros2 topic pub --once /mission std_msgs/msg/String "{data: '{\"type\":\"rollers\"}'}"  # Misión 1: Rollers → Camión
-ros2 topic pub --once /mission std_msgs/msg/String "{data: '{\"type\":\"racks\"}'}"    # Misión 2: Racks → Camión
+ros2 topic echo /robot_state                                                   # current SM state
+ros2 topic pub --once /mission std_msgs/msg/String "{data: '{\"type\":\"rollers\"}'}"  # Mission 1: Rollers → Truck
+ros2 topic pub --once /mission std_msgs/msg/String "{data: '{\"type\":\"racks\"}'}"    # Mission 2: Racks → Truck
 ros2 topic pub --once /sm/control std_msgs/msg/String "{data: '{\"action\":\"abort\"}'}"  # abort | pause | resume | step
 ```
 
-### 🗺️ SLAM & mapa
+### 🗺️ SLAM & map
 ```bash
-ros2 topic echo /slam_pose                             # pose estimada (la que sigue el gemelo)
-ros2 service call /map_saver/save_map std_srvs/srv/Trigger   # guardar mapa a ~/ros2_maps/
+ros2 topic echo /slam_pose                             # estimated pose (the one the twin follows)
+ros2 service call /map_saver/save_map std_srvs/srv/Trigger   # save map to ~/ros2_maps/
 ```
 
 ### 🎯 ArUco
 ```bash
-ros2 topic echo /aruco_ids                             # IDs detectados ahora mismo
-ros2 topic echo /aruco_pose_estimate                   # pose de rescate publicada al MCL
-rqt_image_view /aruco_localization/debug_image         # ver la detección en vivo
-python3 src/perception/tools/aruco_map_editor.py       # editor visual del mapa (http://127.0.0.1:8770)
+ros2 topic echo /aruco_ids                             # IDs detected right now
+ros2 topic echo /aruco_pose_estimate                   # rescue pose published to the MCL
+rqt_image_view /aruco_localization/debug_image         # see the detection live
+python3 src/perception/tools/aruco_map_editor.py       # visual map editor (http://127.0.0.1:8770)
 ```
 
 ### 🏗️ Lifter
 ```bash
-ros2 topic pub --once /lifter_level std_msgs/msg/UInt8 "{data: 3}"   # subir al nivel 3 (0–5)
+ros2 topic pub --once /lifter_level std_msgs/msg/UInt8 "{data: 3}"   # raise to level 3 (0–5)
 ```
 
-### 🪞 Gemelo digital (Gazebo)
+### 🪞 Digital twin (Gazebo)
 ```bash
-python3 scripts/gen_warehouse.py                       # regenerar racks/rollers del mundo
-python3 scripts/add_arucos_to_world.py                 # regenerar ArUcos del mundo
-ign gazebo -g                                          # abrir la GUI de Gazebo conectada al server
+python3 scripts/gen_warehouse.py                       # regenerate world racks/rollers
+python3 scripts/add_arucos_to_world.py                 # regenerate world ArUcos
+ign gazebo -g                                          # open the Gazebo GUI connected to the server
 ```
 
-### 🔍 Diagnóstico
+### 🔍 Diagnostics
 ```bash
-ros2 topic hz /scan                                    # ¿llega el LiDAR a ~10 Hz?
-ros2 node list ; ros2 topic list                       # ¿qué corre / qué se publica?
-pkill -9 -f "ign gazebo" ; pkill -x Xvfb               # limpiar Gazebo/Xvfb colgado
+ros2 topic hz /scan                                    # is the LiDAR coming in at ~10 Hz?
+ros2 node list ; ros2 topic list                       # what's running / what's being published?
+pkill -9 -f "ign gazebo" ; pkill -x Xvfb               # clean up hung Gazebo/Xvfb
 ```
 
 ---
 
-## 🧩 Subsistemas a detalle
+## 🧩 Subsystems in detail
 
 ### 🧭 SLAM (`slam`)
-`slam_node` (C++) corre por cada `/scan` (10 Hz): **predict** (odom + ICP scan-to-scan como prior de
-rotación robusto al patinaje) → **update** (modelo de sensor por *likelihood field* contra el mapa,
-con scoring opcional en **CUDA**) → **resample** → **scan-to-map refine**. Un hilo de back-end hace
-**graph SLAM** (keyframes + cierre de lazo) y re-rasteriza el mapa. Modos `mapping` / `navigation`
-(carga `.pgm` guardado). `puzzlebot_sim` es un simulador 2D propio que modela patinaje y latencia del
-LiDAR para tunear SLAM de forma realista.
+`slam_node` (C++) runs on every `/scan` (10 Hz): **predict** (odom + ICP scan-to-scan as a
+slip-robust rotation prior) → **update** (likelihood-field sensor model against the map, with
+optional **CUDA** scoring) → **resample** → **scan-to-map refine**. A back-end thread does
+**graph SLAM** (keyframes + loop closure) and re-rasterizes the map. Modes `mapping` / `navigation`
+(loads a saved `.pgm`). `puzzlebot_sim` is an in-house 2D simulator that models slip and LiDAR
+latency to tune SLAM realistically.
 
-> 🗺️ *RViz: mapa SLAM + nube de partículas del MCL (flechas) + scan LiDAR + ArUcos detectados con sus IDs (arriba, el `debug_image` de `aruco_localization`):*
-> ![SLAM Montecarlo + ArUco](assets/mapa_montecarlo.jpg)
+> 🗺️ *RViz: SLAM map + MCL particle cloud (arrows) + LiDAR scan + detected ArUcos with their IDs (top, the `debug_image` from `aruco_localization`):*
+> ![SLAM Monte Carlo + ArUco](assets/mapa_montecarlo.jpg)
 
-### 🎯 Localización ArUco (`perception` + `slam`)
-`aruco_localization` detecta los marcadores, calcula la pose absoluta del robot
-(`T_map_base = T_map_marker · inv(T_cam_marker) · inv(T_base_cam)`) y publica `/aruco_pose_estimate`.
-`slam_node` la usa como **baliza de rescate**: si MCL discrepa más que `aruco_snap_tol`, re-siembra la
-creencia ahí y el láser la encaja con las paredes. Mapa en `perception/config/aruco_map.yaml`.
-Editor visual incluido: `python3 src/perception/tools/aruco_map_editor.py`.
+### 🎯 ArUco localization (`perception` + `slam`)
+`aruco_localization` detects the markers, computes the robot's absolute pose
+(`T_map_base = T_map_marker · inv(T_cam_marker) · inv(T_base_cam)`) and publishes `/aruco_pose_estimate`.
+`slam_node` uses it as a **rescue beacon**: if MCL disagrees by more than `aruco_snap_tol`, it re-seeds
+the belief there and the laser snaps it to the walls. Map in `perception/config/aruco_map.yaml`.
+Visual editor included: `python3 src/perception/tools/aruco_map_editor.py`.
 
-### 🪞 Gemelo digital (`controller/gemelo_mirror` + `description`)
-El mundo `almacen_racks.world` reproduce la pista real (muros, racks, rollers y ArUcos con textura).
-`gemelo_mirror` suscribe `/slam_pose` y **teletransporta** el robot virtual (estático, sin físicas)
-vía el servicio `set_pose` de Ignition → un **espejo en vivo** del robot real para entender su entorno.
-Layout de racks/rollers reproducible desde `config/rack_groups.yaml` con `scripts/gen_warehouse.py`.
+### 🪞 Digital twin (`controller/gemelo_mirror` + `description`)
+The `almacen_racks.world` world reproduces the real track (walls, racks, rollers and textured ArUcos).
+`gemelo_mirror` subscribes to `/slam_pose` and **teleports** the virtual robot (static, no physics)
+via Ignition's `set_pose` service → a **live mirror** of the real robot to understand its environment.
+Rack/roller layout is reproducible from `config/rack_groups.yaml` with `scripts/gen_warehouse.py`.
 
-### 🗺️ Navegación (`navigation`)
-`nav_node` carga mapa + `waypoints.yaml`, recibe nombres de waypoint (`truck_*`, `rack_*`, `roller_*`),
-planea con **A\*** y sigue la trayectoria con **pure-pursuit**; evade con **Bug1** (sigue-pared) y
-re-planea. Publica a `/cmd_vel_in`.
+### 🗺️ Navigation (`navigation`)
+`nav_node` loads the map + `waypoints.yaml`, receives waypoint names (`truck_*`, `rack_*`, `roller_*`),
+plans with **A\*** and follows the path with **pure-pursuit**; avoids with **Bug1** (wall-follow) and
+re-plans. Publishes to `/cmd_vel_in`.
 
-### 🧠 Misiones (`mission_control`)
-Máquina de estados **YASMIN**: `search → nav_to_truck → pick / pick_from_rack → place / release_load`.
-Recibe misiones por `/mission` (JSON, desde voz o dashboard), comanda nav y lifter, y expone un
-**debugger** en vivo (`/sm/control`: pause, step, force_outcome, abort).
+### 🧠 Missions (`mission_control`)
+**YASMIN** state machine: `search → nav_to_truck → pick / pick_from_rack → place / release_load`.
+It receives missions via `/mission` (JSON, from voice or dashboard), commands nav and lifter, and
+exposes a live **debugger** (`/sm/control`: pause, step, force_outcome, abort).
 
-### 👁️ Visión (`perception`)
-ArUco (localización), **QR docking** (`qr_quad_alignment`, alineación pixel-space + maniobra para el
-pick), y **clasificador del logo E80** (`logo_stop_debug` + `weights.pt`) para la parada de visión
-antes de chocar con la carga.
+### 👁️ Vision (`perception`)
+ArUco (localization), **QR docking** (`qr_quad_alignment`, pixel-space alignment + pick maneuver),
+and the **E80 logo classifier** (`logo_stop_debug` + `weights.pt`) for the vision stop before bumping
+into the load.
 
-### 🎙️ Voz (`voice_control`)
-Pipeline propio sin modelos pre-entrenados: `audio → VAD → MFCC → VQ (codebook K=256) → HMM →
-gramática → misión`. Publica `/voice_command` y `/mission`.
+### 🎙️ Voice (`voice_control`)
+In-house pipeline with no pre-trained models: `audio → VAD → MFCC → VQ (codebook K=256) → HMM →
+grammar → mission`. Publishes `/voice_command` and `/mission`.
 
 ### 🖥️ Dashboard (`dashboard`)
-Servidor **Flask + SocketIO** (puerto 8080): telemetría, streaming de cámara, estado de misión,
-captura de waypoints, guardar mapa y cambio de modo.
+**Flask + SocketIO** server (port 8080): telemetry, camera streaming, mission status, waypoint
+capture, map saving and mode switching.
 
 ### 🏗️ Lifter (`lifting`)
-`lifting_node` traduce `/lifter_level` (UInt8) a la **FPGA Tang Nano 20K** por **SPI**; el FPGA mapea
-cada nivel a un ángulo de servo. Incluye HAL mock para simulación.
+`lifting_node` translates `/lifter_level` (UInt8) to the **FPGA Tang Nano 20K** over **SPI**; the FPGA
+maps each level to a servo angle. Includes a mock HAL for simulation.
 
 ---
 
-## 🔧 Configuración
+## 🔧 Configuration
 
-| Archivo | Para qué |
+| File | Purpose |
 |---|---|
-| `perception/config/aruco_map.yaml` | Posiciones reales de los ArUcos (fuente de verdad) |
-| `perception/config/camera_params.yaml` | Intrínsecos de la cámara (640×360) |
-| `slam/config/slam_params.yaml` | Tuning del MCL (sigma_hit, alphas, aruco_*, etc.) |
-| `navigation/config/waypoints.yaml` | Waypoints nombrados (zonas) |
-| `description/config/rack_groups.yaml` · `roller_groups.yaml` | Layout del gemelo (→ `gen_warehouse.py`) |
-| `~/ros2_maps/warehouse.yaml` | Mapa de paredes guardado (modo navegación) |
+| `perception/config/aruco_map.yaml` | Real ArUco positions (source of truth) |
+| `perception/config/camera_params.yaml` | Camera intrinsics (640×360) |
+| `slam/config/slam_params.yaml` | MCL tuning (sigma_hit, alphas, aruco_*, etc.) |
+| `navigation/config/waypoints.yaml` | Named waypoints (zones) |
+| `description/config/rack_groups.yaml` · `roller_groups.yaml` | Twin layout (→ `gen_warehouse.py`) |
+| `~/ros2_maps/warehouse.yaml` | Saved wall map (navigation mode) |
 
 ---
 
-## 👥 Equipo
+## 👥 Team
 
-Proyecto del reto **TE3003B** — Integración de Robótica y Sistemas Inteligentes,
+**TE3003B** Challenge project — Robotics and Intelligent Systems Integration,
 Tecnológico de Monterrey (FJ2026).
 
-| Integrante | Matrícula |
+| Member | ID |
 |---|---|
 | Victor Alejandro Meneses | A01384002 |
 | Juan José Jáuregui Barba | A00836722 |
@@ -381,5 +381,5 @@ Tecnológico de Monterrey (FJ2026).
 ---
 
 <div align="center">
-Hecho con ROS 2 · sin Nav2 · sin Whisper — todo implementación propia.
+Built with ROS 2 · no Nav2 · no Whisper — everything in-house.
 </div>
