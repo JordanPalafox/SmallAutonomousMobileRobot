@@ -273,6 +273,7 @@ def drive_until_approach_stop(
     center_fresh_s: float = 1.0,
     vision_stale_slow_s: float = 0.0,
     vision_stale_factor: float = 1.0,
+    vision_confirm: int = 1,
 ) -> str:
     """Creep into the load, stopping by VISION before contact, with the wheel
     stall and the time limit as safety fallbacks.
@@ -323,6 +324,7 @@ def drive_until_approach_stop(
     deadline = t0 + max_duration
     grace_until = t0 + grace
     stalled = 0
+    vision_hold = 0
     last_center_src = None
     stale_logged = False
     logger.info("[%s] creep v=%.3f for <=%.1fs (vision_stop=%s, fallback stall < "
@@ -401,9 +403,13 @@ def drive_until_approach_stop(
             if sig is not None:
                 should_stop, stamp = sig
                 if should_stop and stamp >= t0 and (now - stamp) <= vision_fresh_s:
-                    logger.info("[%s] VISION stop — logo at target distance, "
-                                "halting before contact.", tag)
-                    return "vision"
+                    vision_hold += 1
+                    if vision_hold >= max(1, vision_confirm):
+                        logger.info("[%s] VISION stop — logo at target (confirmed %d/%d).",
+                                    tag, vision_hold, vision_confirm)
+                        return "vision"
+                else:
+                    vision_hold = 0
 
             # 2) Wheel stall (fallback) — only after the spin-up grace, and NOT
             #    while we're deliberately slowing for a stale feed (the lower

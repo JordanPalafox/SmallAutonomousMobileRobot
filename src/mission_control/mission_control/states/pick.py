@@ -44,6 +44,7 @@ class Pick(DebuggableState):
         publish_alignment_start_fn: Callable[[bool], None],
         publish_lifter_fn: Callable[[int], None],
         publish_cmd_fn: Callable[[float, float], None],
+        publish_logo_enable_fn: Callable[[bool], None],
         alignment_timeout: float,
         lifter_timeout: float,
         drive_speed: float,
@@ -58,6 +59,7 @@ class Pick(DebuggableState):
         vision_stop: bool,
         vision_fresh_s: float,
         transport_level: int,
+        approach_level: int = -1,
         state_name: str = "PICK",
         center_kp: float = 0.0,
         center_w_max: float = 0.10,
@@ -65,6 +67,7 @@ class Pick(DebuggableState):
         center_fresh_s: float = 1.0,
         vision_stale_slow_s: float = 0.4,
         vision_stale_factor: float = 0.25,
+        vision_confirm: int = 1,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -74,6 +77,7 @@ class Pick(DebuggableState):
         self._publish_align = publish_alignment_start_fn
         self._publish_lifter = publish_lifter_fn
         self._publish_cmd = publish_cmd_fn
+        self._publish_logo_enable = publish_logo_enable_fn
         self._align_timeout = float(alignment_timeout)
         self._lifter_timeout = float(lifter_timeout)
         self._drive_speed = float(drive_speed)
@@ -82,6 +86,7 @@ class Pick(DebuggableState):
         self._reverse_speed = float(reverse_speed)
         self._entry_level = int(entry_level)
         self._lift_level = int(lift_level)
+        self._approach_level = int(approach_level)
         self._stall_grace = float(stall_grace)
         self._stall_speed = float(stall_speed)
         self._stall_ticks = int(stall_ticks)
@@ -102,6 +107,7 @@ class Pick(DebuggableState):
         # the robot past the ideal stop. factor=1.0 disables it.
         self._vision_stale_slow_s = float(vision_stale_slow_s)
         self._vision_stale_factor = float(vision_stale_factor)
+        self._vision_confirm = int(vision_confirm)
 
     def run(self, blackboard: Blackboard) -> str:
         mission = bb_get(blackboard, "current_mission") or {}
@@ -156,6 +162,17 @@ class Pick(DebuggableState):
                 logger.warning("[PICK] DONE but no QR decoded at the dock — "
                                "RELEASE_LOAD will use SEARCH's qr_value %r.",
                                bb_get(blackboard, "qr_value"))
+
+        # --- 2.5) raise forks to the approach height AFTER dock, BEFORE logo creep ---
+        if self._approach_level >= 0:
+            outcome = drive_lifter(
+                self._debug, blackboard, self._publish_lifter,
+                self._approach_level, self._lifter_timeout, tag="PICK approach",
+            )
+            if outcome == "stop":
+                return "stop"
+            if outcome == "timeout":
+                return "failed"
 
         # --- 3) close the final gap to the load. Roller (this base class) creeps
         #         with the VISION (Electric-80 logo) stop + wheel-stall/time
@@ -212,15 +229,20 @@ class Pick(DebuggableState):
         the pallet straight. PICK_FROM_RACK extends this with a small fixed
         odometry advance after the stop.
         """
-        return drive_until_approach_stop(
-            self._debug, blackboard, self._publish_cmd,
-            self._drive_speed, 0.0, self._forward_time,
-            grace=self._stall_grace, stall_speed=self._stall_speed,
-            stall_ticks=self._stall_ticks,
-            vision_enabled=self._vision_stop,
-            vision_fresh_s=self._vision_fresh,
-            tag="PICK fwd",
-            center_kp=self._center_kp, center_deadband_px=self._center_deadband_px,
-            center_w_max=self._center_w_max, center_fresh_s=self._center_fresh_s,
-            vision_stale_slow_s=self._vision_stale_slow_s,
-            vision_stale_factor=self._vision_stale_factor)
+        self._publish_logo_enable(True)
+        try:
+            return drive_until_approach_stop(
+                self._debug, blackboard, self._publish_cmd,
+                self._drive_speed, 0.0, self._forward_time,
+                grace=self._stall_grace, stall_speed=self._stall_speed,
+                stall_ticks=self._stall_ticks,
+                vision_enabled=self._vision_stop,
+                vision_fresh_s=self._vision_fresh,
+                tag="PICK fwd",
+                center_kp=self._center_kp, center_deadband_px=self._center_deadband_px,
+                center_w_max=self._center_w_max, center_fresh_s=self._center_fresh_s,
+                vision_stale_slow_s=self._vision_stale_slow_s,
+                vision_stale_factor=self._vision_stale_factor,
+                vision_confirm=self._vision_confirm)
+        finally:
+            self._publish_logo_enable(False)

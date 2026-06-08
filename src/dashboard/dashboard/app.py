@@ -617,23 +617,43 @@ def voice_command():
 
     # Fallback: pydub (handles webm/ogg/mp3 via ffmpeg). The browser normally
     # decodes to a 16 kHz WAV client-side, so this only runs for raw/direct
-    # posts or browsers without WebAudio. We surface the real reason because a
-    # swallowed exception here ("Could not decode audio") was impossible to
-    # debug — the usual culprit is a missing ffmpeg or pydub at runtime.
+    # posts or browsers without WebAudio. We write to a temp file so ffmpeg can
+    # seek — fragmented WebM (what Chrome's MediaRecorder produces) fails when
+    # piped to ffmpeg via stdin because it can't seek back to read the header.
     if signal is None:
         try:
             import shutil
+            import tempfile
             from pydub import AudioSegment
             if shutil.which("ffmpeg") is None and shutil.which("avconv") is None:
                 raise RuntimeError(
                     "ffmpeg not found on PATH (apt install ffmpeg). The dashboard "
                     "normally decodes audio in the browser, so update the web UI too."
                 )
-            seg = (
-                AudioSegment.from_file(io.BytesIO(raw))
-                .set_channels(1)
-                .set_frame_rate(16000)
-            )
+            # Derive extension from the uploaded filename so ffmpeg gets the right
+            # format hint (e.g. .webm keeps Chrome's fragmented WebM seekable).
+            _AUDIO_EXTS = {'.webm', '.ogg', '.wav', '.mp3', '.mp4', '.m4a', '.opus', '.flac'}
+            ext = '.webm'
+            if fname:
+                _, _e = os.path.splitext(fname)
+                if _e.lower() in _AUDIO_EXTS:
+                    ext = _e.lower()
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
+                    tf.write(raw)
+                    tmp_path = tf.name
+                seg = (
+                    AudioSegment.from_file(tmp_path)
+                    .set_channels(1)
+                    .set_frame_rate(16000)
+                )
+            finally:
+                if tmp_path:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
             arr = np.array(seg.get_array_of_samples(), dtype=np.float32)
             arr /= 2 ** (seg.sample_width * 8 - 1)
             signal = arr

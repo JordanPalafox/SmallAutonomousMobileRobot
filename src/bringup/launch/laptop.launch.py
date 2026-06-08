@@ -174,7 +174,7 @@ def generate_launch_description():
             'rack_target_cy_px':     240.4,
             'rack_dock_target_dist': 0.36,
             'rack_kp_v_dock_dist':   0.6,   # >0.5 para no atascarse en el deadband (freeze)
-            'rack_dock_max_linear':  0.04,  # un poco más rápido que el roller (0.035)
+            'rack_dock_max_linear':  0.04,
             'rack_dock_tol_cx_px':   15.0,
             'rack_kp_w_dock_px':     0.0022,
             'rack_kd_w_dock_px':     0.0011,
@@ -223,23 +223,24 @@ def generate_launch_description():
             'qos':           'sensor_data',
             'show_window':   False,
             'process_hz':    12.0,
-            'mode':          2,             # template multiescala
+            'mode':          0,             # 0=tmpl 1=edge
             'active_states': 'PICK,PICK_FROM_RACK',
             'rack_state':    'PICK_FROM_RACK',
             # ROLLER profile (default) — used during PICK.
             'template_path': os.path.join(pkg_perc, 'config', 'e80_logo_ref.png'),
-            # 0.78 (was 0.85): más margen para que el match de escala del logo se
-            # considere exitoso aunque el logo se vea algo más chico de lo ideal.
-            'stop_scale':    0.78,
-            'match_thr':     0.45,
-            'roi_top_pct':   50,
-            'hold_frames':   4,
+            # Calibrado 2026-06-08 en robot real (roller). Templates full-frame
+            # (640 px); logo visible ≈173 px (27%) a la distancia ideal de paro.
+            'stop_scale':    0.27,
+            'match_thr':     0.49,
+            'roi_top_pct':   10,
+            'hold_frames':   5,
             'publish_debug': True,
-            # RACK profile — used during PICK_FROM_RACK (foreshortened top view).
+            # RACK profile — used during PICK_FROM_RACK. Calibrado 2026-06-08.
             'rack_template_path': os.path.join(pkg_perc, 'config', 'e80_logo_ref_rack.png'),
-            'rack_stop_scale':    0.95,
-            'rack_match_thr':     0.40,
-            'rack_roi_top_pct':   30,
+            'rack_stop_scale':    0.05,
+            'rack_match_thr':     0.43,
+            'rack_roi_top_pct':   79,
+            'rack_hold_frames':   8,
         }],
         output='screen',
         condition=IfCondition(LaunchConfiguration('logo_stop')),

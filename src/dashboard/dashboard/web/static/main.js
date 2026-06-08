@@ -1302,7 +1302,9 @@ async function _startRecording() {
 
     const opts = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? {mimeType: 'audio/webm;codecs=opus'}
-      : {};
+      : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? {mimeType: 'audio/ogg;codecs=opus'}
+        : {};
     _mediaRecorder = new MediaRecorder(stream, opts);
 
     _mediaRecorder.ondataavailable = (e) => {
@@ -1385,13 +1387,14 @@ async function _blobToWav16k(blob) {
   const ctx = new AC();
   let decoded;
   try {
-    // Promise form; some Safari builds need the callback form, handled below.
     decoded = await new Promise((resolve, reject) => {
+      // Callback form for Safari; Promise form for Chrome/Firefox.
+      // Both may fire — Promise settles only once, so the second call is a no-op.
       const p = ctx.decodeAudioData(arrayBuf, resolve, reject);
       if (p && typeof p.then === 'function') p.then(resolve, reject);
     });
   } finally {
-    if (ctx.close) ctx.close();
+    ctx.close?.();
   }
 
   // Resample to 16 kHz mono through an OfflineAudioContext.

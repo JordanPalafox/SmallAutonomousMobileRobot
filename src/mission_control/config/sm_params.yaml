@@ -69,12 +69,13 @@ state_machine_node:
     # lift_level to take its weight, reverse reverse_time s to pull it clear, and
     # finish at transport_level.
     pick_approach_speed:  0.04    # m/s — slow CREEP into the pallet (no slam, no wheel slip)
-    pick_forward_time:    9.0     # s max (creep is slow; the stall guard ends it on contact)
+    pick_forward_time:    5.0     # s max (creep is slow; the stall guard ends it on contact)
     pick_reverse_time:    5.0     # s backing out with the pallet
     # Reversa SEPARADA del creep: ya cargando el pallet, 0.04 a veces no vencía el
     # deadband del motor y no se movía. Más rápido aquí no arriesga (va de salida).
     pick_reverse_speed:   0.08    # m/s — backing out with the pallet
-    pick_entry_level:     4       # fork height BEFORE docking (slide under the pallet)
+    pick_entry_level:     3       # fork height BEFORE/DURING docking (QR align)
+    pick_approach_level:  4       # fork height raised AFTER dock, BEFORE logo creep (-1 = skip)
     pick_lift_level:      5       # height to lift the pallet (after advancing)
     pick_transport_level: 3       # lifter height after backing out (carry) → ends PICK
     # ── PICK_FROM_RACK (mission 2: RACK_TO_TRUCK) ────────────────────

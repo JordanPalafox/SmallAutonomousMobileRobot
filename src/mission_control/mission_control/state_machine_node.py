@@ -118,10 +118,11 @@ class StateMachineNode(Node):
         # to take its weight, reverse reverse_time s to pull it clear, and finish
         # at transport_level.
         self.declare_parameter("pick_approach_speed", 0.10)    # m/s forward creep
-        self.declare_parameter("pick_forward_time", 5.0)       # s driving into the pallet
+        self.declare_parameter("pick_forward_time", 3.0)       # s driving into the pallet
         self.declare_parameter("pick_reverse_time", 10.0)      # s backing out
-        self.declare_parameter("pick_reverse_speed", 0.08)     # m/s backing out (loaded w/ pallet → needs more than the creep)
-        self.declare_parameter("pick_entry_level", 4)          # fork height BEFORE docking
+        self.declare_parameter("pick_reverse_speed", 0.12)     # m/s backing out (loaded w/ pallet → needs more than the creep)
+        self.declare_parameter("pick_entry_level", 3)          # fork height BEFORE docking (during QR dock)
+        self.declare_parameter("pick_approach_level", 4)       # fork height raised AFTER dock, BEFORE logo creep (-1 = skip)
         self.declare_parameter("pick_lift_level", 5)           # height to lift the pallet
         self.declare_parameter("pick_transport_level", 3)      # lifter height after backing out
         # PICK_FROM_RACK (mission 2 / RACK_TO_TRUCK): same maneuver as PICK but
@@ -232,6 +233,7 @@ class StateMachineNode(Node):
         pick_reverse_time      = float(self.get_parameter("pick_reverse_time").value)
         pick_reverse_speed     = float(self.get_parameter("pick_reverse_speed").value)
         pick_entry_level       = int(self.get_parameter("pick_entry_level").value)
+        pick_approach_level    = int(self.get_parameter("pick_approach_level").value)
         pick_lift_level        = int(self.get_parameter("pick_lift_level").value)
         pick_transport_level   = int(self.get_parameter("pick_transport_level").value)
         pick_rack_entry_level     = int(self.get_parameter("pick_rack_entry_level").value)
@@ -299,11 +301,12 @@ class StateMachineNode(Node):
         self.create_subscription(Point, "/qr_center_error",
                                  self._cb_qr_center, qos_profile_sensor_data)
 
-        self._pub_goal       = self.create_publisher(String, "/goal_waypoint",   qos)
-        self._pub_cmd        = self.create_publisher(Twist,  "/cmd_vel_in",      qos)
-        self._pub_lifter     = self.create_publisher(UInt8,  "/lifter_level",    qos)
-        self._pub_align      = self.create_publisher(Bool,   "/alignment_start", qos)
-        self._pub_state      = self.create_publisher(String, "/robot_state",     qos)
+        self._pub_goal        = self.create_publisher(String, "/goal_waypoint",   qos)
+        self._pub_cmd         = self.create_publisher(Twist,  "/cmd_vel_in",      qos)
+        self._pub_lifter      = self.create_publisher(UInt8,  "/lifter_level",    qos)
+        self._pub_align       = self.create_publisher(Bool,   "/alignment_start", qos)
+        self._pub_state       = self.create_publisher(String, "/robot_state",     qos)
+        self._pub_logo_enable = self.create_publisher(Bool,   "/logo_stop/enable", qos)
         self._pub_blackboard = self.create_publisher(String, "/sm/blackboard",   qos)
         self._pub_transition = self.create_publisher(String, "/sm/transition",   qos)
 
@@ -317,6 +320,7 @@ class StateMachineNode(Node):
             pick_reverse_time=pick_reverse_time,
             pick_reverse_speed=pick_reverse_speed,
             pick_entry_level=pick_entry_level,
+            pick_approach_level=pick_approach_level,
             pick_lift_level=pick_lift_level,
             pick_stall_grace=pick_stall_grace,
             pick_stall_speed=pick_stall_speed,
@@ -561,6 +565,10 @@ class StateMachineNode(Node):
         m = Bool(); m.data = bool(start)
         self._pub_align.publish(m)
 
+    def _publish_logo_enable(self, enable: bool) -> None:
+        m = Bool(); m.data = bool(enable)
+        self._pub_logo_enable.publish(m)
+
     def _publish_state(self, state_name: str) -> None:
         self._current_state_name = state_name
         m = String(); m.data = state_name
@@ -620,6 +628,7 @@ class StateMachineNode(Node):
         pick_reverse_time: float,
         pick_reverse_speed: float,
         pick_entry_level: int,
+        pick_approach_level: int,
         pick_lift_level: int,
         pick_stall_grace: float,
         pick_stall_speed: float,
@@ -676,11 +685,12 @@ class StateMachineNode(Node):
         sm.add_state(
             "PICK",
             Pick(self._debug, self._publish_alignment_start, self._publish_lifter,
-                 self._publish_cmd, alignment_timeout, lifter_timeout,
+                 self._publish_cmd, self._publish_logo_enable, alignment_timeout, lifter_timeout,
                  pick_approach_speed, pick_forward_time, pick_reverse_time,
                  pick_reverse_speed, pick_entry_level, pick_lift_level,
                  pick_stall_grace, pick_stall_speed, pick_stall_ticks,
                  pick_vision_stop, pick_vision_fresh_s, pick_transport_level,
+                 approach_level=pick_approach_level,
                  center_kp=pick_center_kp, center_w_max=pick_center_w_max,
                  vision_stale_slow_s=pick_vision_stale_slow_s,
                  vision_stale_factor=pick_vision_stale_factor, **kw),
@@ -698,7 +708,7 @@ class StateMachineNode(Node):
         sm.add_state(
             "PICK_FROM_RACK",
             PickFromRack(self._debug, self._publish_alignment_start, self._publish_lifter,
-                         self._publish_cmd, alignment_timeout, lifter_timeout,
+                         self._publish_cmd, self._publish_logo_enable, alignment_timeout, lifter_timeout,
                          pick_approach_speed, pick_forward_time, pick_reverse_time,
                          pick_reverse_speed, pick_rack_entry_level, pick_rack_lift_level,
                          pick_stall_grace, pick_stall_speed, pick_stall_ticks,
@@ -708,7 +718,8 @@ class StateMachineNode(Node):
                          center_kp=pick_rack_center_kp,
                          center_w_max=pick_rack_center_w_max,
                          vision_stale_slow_s=pick_vision_stale_slow_s,
-                         vision_stale_factor=pick_vision_stale_factor, **kw),
+                         vision_stale_factor=pick_vision_stale_factor,
+                         vision_confirm=3, **kw),
             transitions={
                 "picked": "NAV_TO_TRUCK",
                 "done":   "MISSION_DONE",

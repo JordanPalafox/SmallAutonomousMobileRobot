@@ -348,6 +348,12 @@ def generate_launch_description():
             'show_window':         False,
             'publish_debug_image': True,
             'dock_target_dist':    ParameterValue(LaunchConfiguration('qr_dock_dist'), value_type=float),
+            # Wide Y tolerance so a stale camera frame during approach can't carry
+            # the robot past the ideal stop before the image updates. At 0.035 m/s
+            # max creep + ~1 s lag the overshoot is ~3.5 cm; 6 cm gives margin.
+            # X stays strict (dock_tol_cx_px = 15 px default). When fwd_in_tol is
+            # True the dock loop already commands v=0 and only corrects w (rotation).
+            'dock_dist_tol':       0.06,
             # Calibrated 2026-06-04 at the ideal dock pose (QR "Popsi", 640x360,
             # 50/50 detections, near-centred: cx~325.6, bearing -2.6 deg).
             'target_cx_px':        325.6,
@@ -364,7 +370,7 @@ def generate_launch_description():
             # NOTE: kp_v=0.30 can re-introduce the freeze-short if the dock starts
             # far (>~0.41 m); tol_cx must be 15 with kp_w=0.0022 (deadband floor).
             'rack_kp_v_dock_dist':   0.30,
-            'rack_dock_max_linear':  0.035,
+            'rack_dock_max_linear':  0.04,
             'rack_dock_tol_cx_px':   15.0,
             'rack_kp_w_dock_px':     0.0022,
             'rack_kd_w_dock_px':     0.0011,
@@ -385,22 +391,28 @@ def generate_launch_description():
             'image_topic':   '/video_source/raw',
             'qos':           'sensor_data',
             'process_hz':    12.0,
-            'mode':          2,
-            # Stop well BEFORE the reference distance for margin: scales are
-            # searched in 0.05 steps; 1.00 = reference ≈ contact. 0.78 gives the
-            # scale match extra tolerance so the vision stop is considered
-            # successful even when lighting/angle keep the apparent logo a bit
-            # smaller than ideal (and more clearance so the slow detector/creep
-            # never rams the load → no brownout).
-            'stop_scale':    0.78,
-            'match_thr':     0.45,
-            'hold_frames':   4,
-            # ROI = bottom half only. The load's logo sits in the lower frame at
-            # stop distance; the upper frame holds the rack POSTER (which also
-            # carries E80 logos). Including it let a far/background logo match at
-            # high scale → false "DONE while far". Excluding it kills that.
-            'roi_top_pct':   50,
+            'mode':          0,
+            'active_states': 'PICK,PICK_FROM_RACK',
+            'rack_state':    'PICK_FROM_RACK',
+            # ROLLER profile (default) — usado en PICK.
+            # Calibrado 2026-06-08 en robot real. Templates full-frame (640 px);
+            # logo visible ≈173 px (27%) a la distancia ideal de paro.
+            'template_path': os.path.join(pkg_perception, 'config', 'e80_logo_ref.png'),
+            'stop_scale':    0.27,
+            'match_thr':     0.49,
+            'hold_frames':   5,
+            'roi_top_pct':   10,
             'publish_debug': True,
+            # CLAHE: normaliza iluminación local antes del matching.
+            'use_clahe':     True,
+            'clahe_clip':    2.0,
+            'clahe_grid':    8,
+            # RACK profile — usado en PICK_FROM_RACK. Calibrado 2026-06-08.
+            'rack_template_path': os.path.join(pkg_perception, 'config', 'e80_logo_ref_rack.png'),
+            'rack_stop_scale':    0.05,
+            'rack_match_thr':     0.43,
+            'rack_roi_top_pct':   79,
+            'rack_hold_frames':   8,
         }],
         condition=IfCondition(LaunchConfiguration('logo_stop')),
         output='screen', emulate_tty=True,

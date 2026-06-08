@@ -157,7 +157,7 @@ class QRQuadAlignmentNode(Node):
         self.declare_parameter('dock_tol_cx_px', 15.0)   # estricto: centra mejor el palet en X (~0.6cm @ dock)
         self.declare_parameter('dock_tol_cy_px', 22.5)
         # Ganancias DOCK
-        self.declare_parameter('dock_max_linear', 0.035) # m/s — lento pero por ENCIMA del deadband con margen (subido 0.025→0.035: a 0.025 el acople al rumbo lo dejaba bajo el deadband y se frenaba)
+        self.declare_parameter('dock_max_linear', 0.04)  # m/s — subido 0.035→0.04: evita atascarse
         self.declare_parameter('kp_v_dock_px', 0.0006)   # m/s por pixel de err_cy
         # Centrado PD (P + D): el termino derivativo amortigua el sobrepaso que
         # hacia "serpentear" el robot. kp mas suave que antes (era 0.0025) ahora
@@ -797,6 +797,15 @@ class QRQuadAlignmentNode(Node):
                  if v_raw >= self._V_DEADBAND else 0.0)
         else:
             v = 0.0
+            # Y already within tolerance (or overshot): log once per entry so it
+            # is visible that the dock is now ROTATE-ONLY — no forward advance.
+            self.get_logger().info(
+                f'DOCK rotate-only: Y done '
+                f'(dist={g["dist_qr"]*1000:.0f}mm tg={self._dock_target_dist*1000:.0f}mm '
+                f'tol={self._dock_dist_tol*1000:.0f}mm), '
+                f'centering X err={err_cx:+.0f}px tol={self._tol_cx_px:.0f}px',
+                throttle_duration_sec=1.0,
+            )
 
         # w: centrado PD (proporcional + derivativo). El termino D amortigua el
         # sobrepaso -> sin "serpenteo". Se quita el piso artificial: cerca del
