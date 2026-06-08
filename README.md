@@ -35,6 +35,7 @@ Reto **TE3003B** · Integración de Robótica y Sistemas Inteligentes · Tecnol�
 - [Estructura del repositorio](#-estructura-del-repositorio)
 - [Instalación](#-instalación)
 - [Uso](#-uso)
+- [Comandos más útiles](#-comandos-más-útiles)
 - [Subsistemas a detalle](#-subsistemas-a-detalle)
 - [Configuración](#-configuración)
 - [Equipo](#-equipo)
@@ -214,13 +215,73 @@ ros2 launch bringup laptop.launch.py gemelo:=true
 ros2 launch bringup all_pc.launch.py
 ```
 
-### Comandos útiles
+---
+
+## ⌨️ Comandos más útiles
+
+> Recuerda **`source install/setup.bash`** en cada terminal nueva.
+
+### 🔨 Build & entorno
 ```bash
-# Mover el robot (todo va por /cmd_vel_in):
-ros2 topic pub /cmd_vel_in geometry_msgs/msg/Twist "{linear: {x: 0.2}}" -r 10
-# Verificar ArUco:
-ros2 topic echo /aruco_ids
-ros2 topic echo /aruco_pose_estimate
+colcon build --symlink-install               # compilar todo
+colcon build --packages-select slam          # recompilar solo un paquete
+source install/setup.bash                     # sourcear el workspace
+```
+
+### 🚀 Lanzar el sistema
+```bash
+ros2 launch bringup sim.launch.py                      # SIM completa (gemelo+SLAM+nav+misiones+dashboard)
+ros2 launch bringup sim.launch.py start_mode:=mapping  # construir el mapa primero
+ros2 launch bringup robot.launch.py                    # [Jetson] robot real (sensado+SLAM+lifter)
+ros2 launch bringup laptop.launch.py gemelo:=true      # [laptop] nav+misiones+dashboard+RViz+gemelo en vivo
+ros2 launch bringup all_pc.launch.py                   # todo en una sola máquina
+```
+
+### 🎮 Mover el robot (todo entra por `/cmd_vel_in`)
+```bash
+ros2 topic pub /cmd_vel_in geometry_msgs/msg/Twist "{linear: {x: 0.15}, angular: {z: 0.0}}" -r 10
+ros2 launch controller joystick_teleop.launch.py       # teleop con joystick
+```
+
+### 🧠 Misiones (lo más fácil: el dashboard en http://localhost:8080)
+```bash
+ros2 topic echo /robot_state                                                   # estado actual de la SM
+ros2 topic pub --once /mission std_msgs/msg/String "{data: '{\"type\":\"rollers\"}'}"  # Misión 1: Rollers → Camión
+ros2 topic pub --once /mission std_msgs/msg/String "{data: '{\"type\":\"racks\"}'}"    # Misión 2: Racks → Camión
+ros2 topic pub --once /sm/control std_msgs/msg/String "{data: '{\"action\":\"abort\"}'}"  # abort | pause | resume | step
+```
+
+### 🗺️ SLAM & mapa
+```bash
+ros2 topic echo /slam_pose                             # pose estimada (la que sigue el gemelo)
+ros2 service call /map_saver/save_map std_srvs/srv/Trigger   # guardar mapa a ~/ros2_maps/
+```
+
+### 🎯 ArUco
+```bash
+ros2 topic echo /aruco_ids                             # IDs detectados ahora mismo
+ros2 topic echo /aruco_pose_estimate                   # pose de rescate publicada al MCL
+rqt_image_view /aruco_localization/debug_image         # ver la detección en vivo
+python3 src/perception/tools/aruco_map_editor.py       # editor visual del mapa (http://127.0.0.1:8770)
+```
+
+### 🏗️ Lifter
+```bash
+ros2 topic pub --once /lifter_level std_msgs/msg/UInt8 "{data: 3}"   # subir al nivel 3 (0–5)
+```
+
+### 🪞 Gemelo digital (Gazebo)
+```bash
+python3 scripts/gen_warehouse.py                       # regenerar racks/rollers del mundo
+python3 scripts/add_arucos_to_world.py                 # regenerar ArUcos del mundo
+ign gazebo -g                                          # abrir la GUI de Gazebo conectada al server
+```
+
+### 🔍 Diagnóstico
+```bash
+ros2 topic hz /scan                                    # ¿llega el LiDAR a ~10 Hz?
+ros2 node list ; ros2 topic list                       # ¿qué corre / qué se publica?
+pkill -9 -f "ign gazebo" ; pkill -x Xvfb               # limpiar Gazebo/Xvfb colgado
 ```
 
 ---
@@ -295,9 +356,16 @@ cada nivel a un ángulo de servo. Incluye HAL mock para simulación.
 
 ## 👥 Equipo
 
-Proyecto del reto **TE3003B**, Tecnológico de Monterrey (FJ2026).
+Proyecto del reto **TE3003B** — Integración de Robótica y Sistemas Inteligentes,
+Tecnológico de Monterrey (FJ2026).
 
-> _Agrega aquí los integrantes del equipo._
+| Integrante | Matrícula |
+|---|---|
+| Victor Alejandro Meneses | A01384002 |
+| Juan José Jáuregui Barba | A00836722 |
+| Hugo Daniel Castillo Ovando | A00836025 |
+| Rosendo De Los Ríos Moreno | A01198515 |
+| Jordan Arturo Palafox | A00835705 |
 
 ---
 
