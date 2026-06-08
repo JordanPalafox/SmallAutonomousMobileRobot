@@ -78,7 +78,10 @@ VALID_MISSION_TYPES = {
 # that, these words drive the robot directly from the dashboard:
 #   forward/left/right → a short timed teleop nudge (only while the SM is IDLE)
 #   racks/rollers      → a SEARCH-only mission (drive the zone, stop at the pallet)
-# map/one/two/continue/stop are intentionally NOT mapped yet (passthrough only).
+#   one/two            → the full mission 1 / 2, same as the dashboard buttons
+#                        ("one"  = ROLLER_TO_TRUCK = btnMissionRollers,
+#                         "two"  = RACK_TO_TRUCK   = btnMissionRacks).
+# map/continue/stop are intentionally NOT mapped yet (passthrough only).
 # ---------------------------------------------------------------------------
 
 _VOICE_TELEOP_LINEAR = 0.10   # m/s  (matches the teleop default speed)
@@ -91,6 +94,8 @@ VOICE_ACTIONS = {
     "right":   {"kind": "teleop", "linear": 0.0, "angular": -_VOICE_TELEOP_ANGULAR},
     "racks":   {"kind": "mission", "type": "SEARCH_RACKS"},
     "rollers": {"kind": "mission", "type": "SEARCH_ROLLERS"},
+    "one":     {"kind": "mission", "type": "ROLLER_TO_TRUCK"},
+    "two":     {"kind": "mission", "type": "RACK_TO_TRUCK"},
 }
 
 # ---------------------------------------------------------------------------
@@ -182,9 +187,13 @@ def _dispatch_voice_action(word: str) -> Optional[dict]:
         return {"kind": "teleop", "duration": _VOICE_TELEOP_DURATION}
 
     if action["kind"] == "mission":
-        # SEARCH-only mission; the SM ignores it if one is already running.
+        # Same payload the dashboard buttons POST to /api/mission — the SM only
+        # accepts it while IDLE, so it's ignored if a mission is already running.
         try:
-            ros_bridge.publish_mission(json.dumps({"type": action["type"]}))
+            ros_bridge.publish_mission(json.dumps({
+                "type": action["type"],
+                "id": f"voice_{int(time.time())}",
+            }))
         except Exception:  # noqa: BLE001
             return None
         return {"kind": "mission", "type": action["type"]}
@@ -567,6 +576,33 @@ def send_teleop():
     return jsonify({"ok": True})
 
 
+def _sniff_audio_format(data: bytes) -> Optional[str]:
+    """Identify the audio container from its leading magic bytes.
+
+    Returns an ffmpeg demuxer name suitable for pydub's ``format=`` argument, or
+    ``None`` when the bytes don't match any known container. The browser's voice
+    fallback labels every blob ``recording.webm`` regardless of the real format
+    (Firefox records OGG/Opus, Chrome WebM), so trusting the filename made ffmpeg
+    pick the matroska demuxer and fail with "EBML header parsing failed". Probing
+    the actual bytes lets us force the right demuxer instead.
+    """
+    if len(data) < 12:
+        return None
+    if data[:4] == b"\x1a\x45\xdf\xa3":            # EBML header → Matroska / WebM
+        return "webm"
+    if data[:4] == b"OggS":                         # Ogg (Opus / Vorbis)
+        return "ogg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "wav"
+    if data[:4] == b"fLaC":
+        return "flac"
+    if data[4:8] == b"ftyp":                        # ISO-BMFF → mp4 / m4a
+        return "mp4"
+    if data[:3] == b"ID3" or data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:
+        return "mp3"
+    return None
+
+
 @app.route("/api/voice", methods=["POST"])
 def voice_command():
     """
@@ -630,21 +666,31 @@ def voice_command():
                     "ffmpeg not found on PATH (apt install ffmpeg). The dashboard "
                     "normally decodes audio in the browser, so update the web UI too."
                 )
-            # Derive extension from the uploaded filename so ffmpeg gets the right
-            # format hint (e.g. .webm keeps Chrome's fragmented WebM seekable).
-            _AUDIO_EXTS = {'.webm', '.ogg', '.wav', '.mp3', '.mp4', '.m4a', '.opus', '.flac'}
-            ext = '.webm'
-            if fname:
-                _, _e = os.path.splitext(fname)
-                if _e.lower() in _AUDIO_EXTS:
-                    ext = _e.lower()
+            # Identify the real container from the magic bytes instead of trusting
+            # the uploaded filename — the web UI labels every fallback blob
+            # "recording.webm" even when Firefox recorded OGG/Opus, which made
+            # ffmpeg misdetect the format ("EBML header parsing failed"). Forcing
+            # the right demuxer (and bailing early on non-audio data) avoids that.
+            fmt = _sniff_audio_format(raw)
+            if fmt is None:
+                # Bytes match no known audio container — usually an empty or
+                # truncated recording. ffmpeg would only emit a cryptic dump, so
+                # return something the user can act on.
+                return jsonify({
+                    "error": "Could not decode audio",
+                    "reason": (
+                        f"Unrecognised audio data ({len(raw)} bytes) — the "
+                        "recording was likely empty or cut off. Hold the button, "
+                        "speak, then release."
+                    ),
+                }), 400
             tmp_path = None
             try:
-                with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
+                with tempfile.NamedTemporaryFile(suffix='.' + fmt, delete=False) as tf:
                     tf.write(raw)
                     tmp_path = tf.name
                 seg = (
-                    AudioSegment.from_file(tmp_path)
+                    AudioSegment.from_file(tmp_path, format=fmt)
                     .set_channels(1)
                     .set_frame_rate(16000)
                 )

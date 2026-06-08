@@ -1359,7 +1359,14 @@ async function _sendAudio() {
     form.append('audio', wav, 'recording.wav');
   } catch (err) {
     console.warn('[voice] client-side WAV encode failed, sending raw blob:', err);
-    form.append('audio', blob, 'recording.webm');
+    // Name the blob after its real container (Firefox records OGG, Chrome WebM)
+    // so the server's ffmpeg fallback gets the right format hint instead of
+    // misdetecting OGG data as WebM.
+    const ext = mime.includes('ogg') ? 'ogg'
+              : mime.includes('mp4') ? 'mp4'
+              : mime.includes('wav') ? 'wav'
+              : 'webm';
+    form.append('audio', blob, 'recording.' + ext);
   }
 
   try {

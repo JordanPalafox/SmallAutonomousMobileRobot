@@ -513,7 +513,10 @@ class StateMachineNode(Node):
     def _cb_voice(self, msg: String) -> None:
         cmd = msg.data.strip().lower()
         self._blackboard["voice_command"] = cmd
-        if cmd in ("stop", "pause"):
+        if cmd == "stop":
+            # "stop" hard-aborts the mission — same as the dashboard Abort button.
+            self._apply_abort()
+        elif cmd == "pause":
             self._debug.set_pause(True)
         elif cmd == "resume":
             self._debug.set_pause(False)
@@ -536,16 +539,25 @@ class StateMachineNode(Node):
         elif action == "force_outcome":
             self._debug.set_force_outcome(payload.get("value"))
         elif action == "abort":
-            self._debug.set_abort(True)
-            # Make sure the robot doesn't keep moving while in abort.
-            self._publish_goal("stop")
-            self._publish_alignment_start(False)
+            self._apply_abort()
         elif action == "clear_abort":
             self._debug.set_abort(False)
         else:
             self.get_logger().warn(f"/sm/control: unknown action {action!r}")
             return
         self.get_logger().info(f"/sm/control: applied {payload}")
+
+    def _apply_abort(self) -> None:
+        """Hard-stop the active mission.
+
+        Shared by the ``/sm/control`` abort action (dashboard Abort button) and
+        the ``stop`` voice command so both behave identically: raise the abort
+        flag (states return their abort outcome) and immediately stop the robot.
+        """
+        self._debug.set_abort(True)
+        # Make sure the robot doesn't keep moving while in abort.
+        self._publish_goal("stop")
+        self._publish_alignment_start(False)
 
     # ------------------------------------------------------------------ outputs
     def _publish_goal(self, waypoint_name: str) -> None:
